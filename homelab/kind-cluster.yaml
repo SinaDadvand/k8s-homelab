@@ -7,5 +7,8 @@ nodes:
   - containerPort: 30001
     hostPort: 30001
     protocol: TCP
+  - containerPort: 30002
+    hostPort: 30002
+    protocol: TCP
 - role: worker
 - role: worker
