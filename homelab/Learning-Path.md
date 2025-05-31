@@ -57,45 +57,71 @@ kubectl api-resources
 
 ### Step 3: Create Your First Pod
 
+**Why We Create This File:** A Pod is the smallest deployable unit in Kubernetes and represents one or more containers that share storage, network, and configuration. By creating this YAML file, we're defining a declarative specification for our first workload that Kubernetes will use to create and manage a running Pod instance. This file serves as your infrastructure-as-code document that can be version controlled and repeatedly applied.
+
 **Create:** `01-nginx-pod.yaml`
 ```yaml
+# Kubernetes API version for Pod resources - stable version for core objects
 apiVersion: v1
+# The type of Kubernetes resource we're defining
 kind: Pod
+# Metadata contains identifying information about the resource
 metadata:
+  # Unique name for this Pod within the namespace
   name: nginx-pod
+  # Labels are key-value pairs used for identification and selection
+  # The 'app: nginx' label helps us group and select this Pod later
+  # The 'environment: learning' label categorizes this for educational purposes
   labels:
     app: nginx
     environment: learning
+# Specification defines the desired state of the Pod
 spec:
+  # Array of containers that will run in this Pod
   containers:
-  - name: nginx
+  # Container definition - Pods can have multiple containers but we use one here
+  - name: nginx  # Name of the container within the Pod
+    # Docker image to run - 'latest' tag pulls the most recent version
     image: nginx:latest
+    # Ports that the container exposes
     ports:
+    # Container port 80 is where nginx serves HTTP traffic
     - containerPort: 80
+    # Resource constraints to ensure fair resource allocation
     resources:
+      # Minimum resources guaranteed to the container
       requests:
-        memory: "64Mi"
-        cpu: "50m"
+        memory: "64Mi"    # 64 Mebibytes of RAM guaranteed
+        cpu: "50m"        # 50 millicores (0.05 CPU cores) guaranteed
+      # Maximum resources the container can use
       limits:
-        memory: "128Mi"
-        cpu: "100m"
+        memory: "128Mi"   # 128 MiB maximum RAM usage
+        cpu: "100m"       # 100 millicores (0.1 CPU cores) maximum
 ```
 
 **Apply and Test:**
 ```powershell
-# Apply the pod
+# Apply the pod configuration to the cluster
+# This command tells Kubernetes to create the pod based on our YAML specification
 kubectl apply -f 01-nginx-pod.yaml
 
-# Check pod status
+# Check pod status - verify the pod is running
+# Shows basic information like STATUS, RESTARTS, and AGE
 kubectl get pods
+
+# Get detailed information about the pod including events and configuration
+# This is crucial for troubleshooting if the pod doesn't start
 kubectl describe pod nginx-pod
 
-# Check pod logs
+# View the container logs to see nginx startup messages
+# Useful for debugging application issues
 kubectl logs nginx-pod
 
-# Access the pod (port forward)
+# Access the pod directly by forwarding local port 8080 to container port 80
+# This creates a tunnel from your machine to the pod
 kubectl port-forward nginx-pod 8080:80
-# Open browser to http://localhost:8080
+# Open browser to http://localhost:8080 to see the nginx welcome page
+# Press Ctrl+C to stop port forwarding
 ```
 
 **Learning Objectives:**
@@ -106,71 +132,98 @@ kubectl port-forward nginx-pod 8080:80
 
 ### Step 4: Scale with Deployments
 
+**Why We Create This File:** While Pods are great for understanding basic concepts, Deployments are what you'll use in production. A Deployment manages a set of identical Pods, providing declarative updates, scaling, and rolling updates. This YAML file defines not just one Pod, but a desired state of multiple replicas with automatic recovery if any Pod fails.
+
 **Create:** `02-nginx-deployment.yaml`
 ```yaml
+# apps/v1 API version is used for Deployment resources
 apiVersion: apps/v1
+# Deployment kind manages sets of Pods with scaling and rolling updates
 kind: Deployment
 metadata:
+  # Name for this Deployment resource
   name: nginx-deployment
+  # Labels help organize and select this Deployment
   labels:
     app: nginx
+# Deployment specification
 spec:
+  # Number of Pod replicas to maintain
   replicas: 3
+  # Selector defines which Pods this Deployment manages
+  # Must match the labels in the Pod template below
   selector:
     matchLabels:
       app: nginx
+  # Template defines the Pod specification for each replica
   template:
+    # Metadata for each Pod created by this Deployment
     metadata:
+      # Labels applied to each Pod - must match selector above
       labels:
         app: nginx
+    # Pod specification (same as in Step 3, but with health checks)
     spec:
       containers:
       - name: nginx
         image: nginx:latest
         ports:
         - containerPort: 80
+        # Resource constraints for each container
         resources:
           requests:
-            memory: "64Mi"
+            memory: "64Mi"    # Guaranteed resources
             cpu: "50m"
           limits:
-            memory: "128Mi"
+            memory: "128Mi"   # Maximum resources
             cpu: "100m"
+        # Liveness probe checks if the container is still running
+        # Kubernetes will restart the container if this fails
         livenessProbe:
           httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 10
-          periodSeconds: 10
+            path: /           # Check the root path
+            port: 80          # On port 80
+          initialDelaySeconds: 10  # Wait 10s before first check
+          periodSeconds: 10        # Check every 10 seconds
+        # Readiness probe checks if the container is ready to receive traffic
+        # Kubernetes will not send traffic until this succeeds
         readinessProbe:
           httpGet:
-            path: /
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
+            path: /           # Check the root path
+            port: 80          # On port 80
+          initialDelaySeconds: 5   # Wait 5s before first check
+          periodSeconds: 5         # Check every 5 seconds
 ```
 
 **Apply and Experiment:**
 ```powershell
-# Delete the single pod first
+# First, clean up the single pod from Step 3 since we're moving to Deployments
+# Single pods don't auto-restart, but Deployment-managed pods do
 kubectl delete pod nginx-pod
 
-# Apply the deployment
+# Apply the deployment configuration to create multiple pod replicas
 kubectl apply -f 02-nginx-deployment.yaml
 
-# Watch pods being created
+# Watch pods being created in real-time (press Ctrl+C to stop watching)
+# This shows how Kubernetes orchestrates multiple pod creation
 kubectl get pods -w
 
-# Check deployment status
+# Check deployment status and see how many replicas are ready
 kubectl get deployments
+
+# Get detailed information about the deployment, including events
+# Shows ReplicaSet creation and pod scheduling details
 kubectl describe deployment nginx-deployment
 
-# Scale the deployment
+# Demonstrate horizontal scaling - increase replicas to 5
+# This shows how easy it is to scale applications in Kubernetes
 kubectl scale deployment nginx-deployment --replicas=5
 kubectl get pods
 
-# Scale back down
+# Scale back down to 2 replicas to save resources
+# Notice how Kubernetes gracefully terminates excess pods
 kubectl scale deployment nginx-deployment --replicas=2
+kubectl get pods
 ```
 
 **Learning Objectives:**
@@ -185,37 +238,54 @@ kubectl scale deployment nginx-deployment --replicas=2
 
 ### Step 5: Expose Your Application
 
+**Why We Create This File:** Services provide stable networking for your Pods. Unlike Pods which have ephemeral IP addresses that change when they restart, Services provide a consistent endpoint. This YAML creates a NodePort service that exposes your application both internally within the cluster and externally through a specific port.
+
 **Create:** `03-nginx-service.yaml`
 ```yaml
+# v1 API version for core Service resources
 apiVersion: v1
+# Service provides stable networking and load balancing for Pods
 kind: Service
 metadata:
+  # Name for this Service - will become the DNS name inside the cluster
   name: nginx-service
+# Service specification
 spec:
+  # Selector determines which Pods this Service will route traffic to
+  # Must match the labels on the target Pods (from our Deployment)
   selector:
     app: nginx
+  # Port configuration - Services can expose multiple ports
   ports:
-  - name: http
-    port: 80
-    targetPort: 80
-    nodePort: 30002  # This matches your kind-cluster.yaml port mapping
+  - name: http              # Name for this port (useful when multiple ports exist)
+    port: 80                # Port the Service exposes inside the cluster
+    targetPort: 80          # Port on the container to forward traffic to
+    nodePort: 30002         # External port on each cluster node (30000-32767 range)
+                           # This matches your kind-cluster.yaml port mapping
+  # NodePort exposes the service on each node's IP at a static port
+  # Other types: ClusterIP (internal only), LoadBalancer (cloud), ExternalName
   type: NodePort
 ```
 
 **Apply and Test:**
 ```powershell
-# Apply the service
+# Create the service to expose our nginx deployment
 kubectl apply -f 03-nginx-service.yaml
 
-# Check service
+# View all services in the cluster - notice the ClusterIP and NodePort
 kubectl get services
+
+# Get detailed service information including endpoints
+# Endpoints show which Pod IPs the service will route traffic to
 kubectl describe service nginx-service
 
-# Test the service internally
+# Test internal service discovery by creating a temporary pod
+# This demonstrates how services work within the cluster
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- nginx-service
 
-# Test from your host machine (thanks to KIND port mapping)
-# Open browser to http://localhost:30002
+# Test external access from your host machine
+# Thanks to KIND's port mapping in kind-cluster.yaml, this works
+# Open browser to http://localhost:30002 to see nginx serving traffic from any of the pods
 ```
 
 **Learning Objectives:**
@@ -225,20 +295,27 @@ kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- nginx
 
 ### Step 6: Advanced Service Discovery
 
+**Why We Create This File:** This demonstrates different service types and their use cases. ClusterIP services are for internal communication only, while headless services return individual Pod IPs instead of load balancing, useful for stateful applications that need direct Pod-to-Pod communication.
+
 **Create:** `04-multiple-services.yaml`
 ```yaml
+# ClusterIP Service - Default type, internal cluster access only
 apiVersion: v1
 kind: Service
 metadata:
   name: nginx-clusterip
 spec:
+  # Same selector as our NodePort service - targets the same Pods
   selector:
     app: nginx
   ports:
-  - port: 80
-    targetPort: 80
+  - port: 80                # Port exposed within the cluster
+    targetPort: 80          # Port on the target containers
+  # ClusterIP is the default type - only accessible from within the cluster
+  # Gets a stable internal IP address that doesn't change
   type: ClusterIP
 ---
+# Headless Service - No load balancing, returns individual Pod IPs
 apiVersion: v1
 kind: Service
 metadata:
@@ -249,17 +326,32 @@ spec:
   ports:
   - port: 80
     targetPort: 80
+  # Setting clusterIP to None makes this a "headless" service
+  # DNS queries return all Pod IPs instead of a single service IP
+  # Useful for stateful applications that need to know about all instances
   clusterIP: None
 ```
 
 **Test Different Service Types:**
 ```powershell
+# Create both ClusterIP and headless services
 kubectl apply -f 04-multiple-services.yaml
 
-# Test service discovery
+# Test service discovery with DNS lookups
+# Each service type behaves differently:
+
+# 1. NodePort service returns a single IP (load balanced)
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- nslookup nginx-service
+
+# 2. ClusterIP service also returns a single IP (load balanced)
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- nslookup nginx-clusterip
+
+# 3. Headless service returns multiple IPs (one for each Pod)
+# This is useful when you need to connect to specific Pod instances
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- nslookup nginx-headless
+
+# Bonus: See all endpoints that services are routing to
+kubectl get endpoints
 ```
 
 ---
@@ -268,43 +360,60 @@ kubectl run test-pod --image=busybox --rm -it --restart=Never -- nslookup nginx-
 
 ### Step 7: ConfigMaps for Configuration
 
+**Why We Create This File:** ConfigMaps separate configuration from application code, following the 12-factor app methodology. This allows you to modify configuration without rebuilding container images. We're creating both an nginx configuration file and a custom HTML page to demonstrate different ways to use ConfigMaps.
+
 **Create:** `05-nginx-configmap.yaml`
 ```yaml
+# ConfigMaps store non-confidential configuration data in key-value pairs
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nginx-config
+# Data section contains the configuration files
 data:
+  # Custom nginx configuration - replaces the default nginx.conf
   nginx.conf: |
+    # Event processing configuration
     events {
-        worker_connections 1024;
+        worker_connections 1024;    # Max connections per worker process
     }
+    # HTTP server configuration
     http {
         server {
-            listen 80;
+            listen 80;              # Listen on port 80
+            # Main application location
             location / {
                 root /usr/share/nginx/html;
                 index index.html;
             }
+            # Health check endpoint for monitoring and probes
             location /health {
                 return 200 "OK\n";
                 add_header Content-Type text/plain;
             }
         }
     }
+  # Custom HTML content - will replace the default nginx page
   index.html: |
     <!DOCTYPE html>
     <html>
     <head>
         <title>Learning Kubernetes!</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            h1 { color: #326ce5; }
+        </style>
     </head>
     <body>
         <h1>Hello from Kubernetes!</h1>
-        <p>This is served from a ConfigMap</p>
-        <p>Pod: ${HOSTNAME}</p>
+        <p>This content is served from a ConfigMap</p>
+        <p><strong>Pod:</strong> ${HOSTNAME}</p>
+        <p><em>Configuration as Code in Action!</em></p>
     </body>
     </html>
 ```
+
+**Why We Create This File:** This demonstrates how to consume ConfigMaps in a Deployment. We mount configuration files as volumes and inject environment variables, showing two common patterns for using configuration data in Kubernetes applications.
 
 **Create:** `06-nginx-with-config.yaml`
 ```yaml
@@ -320,29 +429,37 @@ spec:
   template:
     metadata:
       labels:
-        app: nginx-config
+        app: nginx-config      # Different label to distinguish from previous deployment
     spec:
       containers:
       - name: nginx
         image: nginx:latest
         ports:
         - containerPort: 80
+        # Volume mounts define where to mount the ConfigMap data inside the container
         volumeMounts:
+        # Mount the custom nginx.conf file to replace the default configuration
         - name: nginx-config-volume
-          mountPath: /etc/nginx/nginx.conf
-          subPath: nginx.conf
+          mountPath: /etc/nginx/nginx.conf    # Destination path in container
+          subPath: nginx.conf                 # Specific key from ConfigMap
+        # Mount the custom HTML file to replace the default nginx page
         - name: html-volume
           mountPath: /usr/share/nginx/html/index.html
           subPath: index.html
+        # Environment variables can be injected from various sources
         env:
+        # Get the pod name and make it available as HOSTNAME environment variable
         - name: HOSTNAME
           valueFrom:
             fieldRef:
-              fieldPath: metadata.name
+              fieldPath: metadata.name        # Reference to pod metadata
+      # Volumes section defines the data sources to mount
       volumes:
+      # Volume sourced from our nginx-config ConfigMap
       - name: nginx-config-volume
         configMap:
-          name: nginx-config
+          name: nginx-config                  # Must match the ConfigMap name
+      # Same ConfigMap used for HTML content (demonstrates reuse)
       - name: html-volume
         configMap:
           name: nginx-config
@@ -350,15 +467,29 @@ spec:
 
 **Apply and Test:**
 ```powershell
+# First create the ConfigMap with our custom configuration
 kubectl apply -f 05-nginx-configmap.yaml
+
+# Then deploy the application that uses the ConfigMap
 kubectl apply -f 06-nginx-with-config.yaml
 
-# Create service for the new deployment
+# Create a service to expose the new deployment
+# Using kubectl expose command instead of YAML for variety
 kubectl expose deployment nginx-with-config --port=80 --type=NodePort
 
-# Test the custom configuration
+# Check the services and note the new NodePort assigned
 kubectl get services
-# Access via the NodePort assigned
+
+# Test the custom configuration by accessing the new service
+# The HTML should show our custom content from the ConfigMap
+# Open browser to the NodePort shown above (e.g., http://localhost:3xxxx)
+
+# Verify the custom health endpoint works
+kubectl get service nginx-with-config  # Note the NodePort
+# Then test: curl http://localhost:[NodePort]/health
+
+# Check that environment variables are properly injected
+kubectl exec deployment/nginx-with-config -- env | grep HOSTNAME
 ```
 
 **Learning Objectives:**
@@ -373,73 +504,175 @@ kubectl get services
 
 ### Step 8: Debugging Tools
 
+**Why We Create This File:** BusyBox is a Swiss Army knife for debugging Kubernetes clusters. It contains many common Unix utilities in a tiny package, making it perfect for troubleshooting networking, DNS resolution, and connectivity issues within your cluster.
+
 **Create:** `07-debug-pod.yaml`
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: debug-pod
+  # Labels help organize and identify debugging pods
+  labels:
+    purpose: debugging
+    tool: busybox
 spec:
   containers:
   - name: busybox
+    # BusyBox image contains many useful debugging tools
     image: busybox:latest
-    command: ['sleep', '3600']
+    # Keep the container running so we can exec into it
+    command: ['sleep', '3600']    # Sleep for 1 hour
+    # Minimal resource allocation since this is just for debugging
     resources:
       requests:
-        memory: "32Mi"
-        cpu: "10m"
+        memory: "32Mi"    # 32 Mebibytes - very lightweight
+        cpu: "10m"        # 10 millicores - minimal CPU
+      limits:
+        memory: "64Mi"    # Maximum 64 MiB
+        cpu: "50m"        # Maximum 50 millicores
+  # OnFailure restart policy is appropriate for debugging pods
+  restartPolicy: OnFailure
 ```
 
 **Debugging Commands:**
 ```powershell
+# Deploy the debug pod
 kubectl apply -f 07-debug-pod.yaml
 
-# Execute commands in the pod
+# Wait for the pod to be ready
+kubectl wait --for=condition=ready pod/debug-pod --timeout=60s
+
+# Execute an interactive shell inside the debug pod
+# This gives you a command prompt inside the cluster
 kubectl exec -it debug-pod -- /bin/sh
 
-# Inside the pod, try these commands:
-# wget -qO- nginx-service
-# nslookup nginx-service
-# ping nginx-service
-# env | grep KUBERNETES
+# ===== COMMANDS TO RUN INSIDE THE DEBUG POD =====
+# Test HTTP connectivity to our nginx service
+wget -qO- nginx-service
 
-# From outside, check pod details
+# Test DNS resolution - should show service IP
+nslookup nginx-service
+
+# Test DNS resolution for different service types
+nslookup nginx-clusterip
+nslookup nginx-headless    # Should return multiple IPs
+
+# Test network connectivity (may not work if ICMP is blocked)
+ping nginx-service
+
+# View Kubernetes environment variables automatically injected
+env | grep KUBERNETES
+
+# Check if specific ports are open
+telnet nginx-service 80
+
+# View network interfaces and routing
+ip addr show
+ip route show
+
+# Test specific endpoints
+wget -qO- nginx-service/health
+# Exit the pod shell with: exit
+
+# ===== COMMANDS TO RUN FROM YOUR HOST =====
+# From outside the pod, check pod details and events
 kubectl describe pod debug-pod
+
+# View logs from the debug pod (usually minimal for BusyBox)
 kubectl logs debug-pod
 
-# Check events
+# Check cluster events for troubleshooting
 kubectl get events --sort-by=.metadata.creationTimestamp
+
+# Test DNS from outside the cluster
+kubectl exec debug-pod -- nslookup kubernetes.default.svc.cluster.local
 ```
 
 ### Step 9: Troubleshooting Common Issues
 
+### Why We Create This File:
+The `08-broken-pod.yaml` file demonstrates common failure scenarios you'll encounter in production Kubernetes environments. By intentionally creating broken configurations, we learn systematic troubleshooting approaches that are essential for maintaining applications in real-world deployments. This practice helps build muscle memory for debugging workflows.
+
 **Create:** `08-broken-pod.yaml` (Intentionally broken for learning)
 ```yaml
-apiVersion: v1
-kind: Pod
+# This Pod demonstrates common failure patterns in Kubernetes deployments
+apiVersion: v1        # Using the core v1 API for basic Pod resources
+kind: Pod            # Defining a single Pod (not managed by a controller)
 metadata:
-  name: broken-pod
+  name: broken-pod   # Simple descriptive name for our troubleshooting exercise
 spec:
-  containers:
-  - name: broken-container
-    image: nginx:nonexistent-tag
+  containers:        # Container specifications - this is where our intentional error lives
+  - name: broken-container           # Container name for identification in logs
+    image: nginx:nonexistent-tag     # INTENTIONAL ERROR: This tag doesn't exist, causing ImagePullBackOff
     ports:
-    - containerPort: 80
+    - containerPort: 80              # Standard HTTP port for nginx (won't matter since container won't start)
 ```
 
-**Troubleshooting Practice:**
+**Comprehensive Troubleshooting Practice:**
 ```powershell
+# Apply the broken configuration to see failure in action
 kubectl apply -f 08-broken-pod.yaml
+# Expected output: pod/broken-pod created
 
-# Observe the failure
+# Step 1: Check overall pod status - this gives you the high-level view
 kubectl get pods
-kubectl describe pod broken-pod
-kubectl logs broken-pod
+# Look for: broken-pod   0/1     ImagePullBackOff   0          2m
 
-# Fix the issue
+# Step 2: Get detailed pod information - this shows events and detailed status
+kubectl describe pod broken-pod
+# Key sections to examine:
+# - Events: Shows the sequence of what Kubernetes tried to do
+# - State: Shows current container state (Waiting, Running, Terminated)
+# - Reason: Explains why the container is in its current state
+
+# Step 3: Attempt to get container logs (will fail but shows the process)
+kubectl logs broken-pod
+# Expected: Error from server (BadRequest): container "broken-container" in pod "broken-pod" is waiting to start: trying and failing to pull image
+
+# Step 4: Get more detailed events across the cluster
+kubectl get events --sort-by=.metadata.creationTimestamp
+# This shows cluster-wide events, useful for understanding timing and sequences
+
+# Step 5: Fix the issue by updating the image
 kubectl delete pod broken-pod
-# Edit the file to use nginx:latest
+# Always clean up before applying fixes
+
+# Create a corrected version or edit the file to use nginx:latest
+# Then reapply
 kubectl apply -f 08-broken-pod.yaml
+# Now it should work: pod/broken-pod created
+
+# Step 6: Verify the fix worked
+kubectl get pods
+# Should show: broken-pod   1/1     Running   0          30s
+
+# Step 7: Test that the application actually works
+kubectl port-forward pod/broken-pod 8080:80
+# In another terminal: curl http://localhost:8080
+```
+
+**Additional Debugging Scenarios to Practice:**
+
+```powershell
+# Scenario 1: Resource constraints causing eviction
+# Create a pod that requests too much memory
+kubectl run memory-hog --image=nginx --requests='memory=10Gi'
+kubectl describe pod memory-hog
+# Look for: FailedScheduling events
+
+# Scenario 2: Misconfigured environment variables
+kubectl run env-test --image=nginx --env="MYSQL_HOST=nonexistent-service"
+kubectl logs env-test
+# Practice reading application logs for configuration errors
+
+# Scenario 3: Network connectivity issues
+kubectl run network-test --image=busybox --command -- sleep 3600
+kubectl exec -it network-test -- nslookup kubernetes.default
+# Test DNS resolution and network connectivity from inside pods
+
+# Clean up all test pods
+kubectl delete pod broken-pod memory-hog env-test network-test --ignore-not-found=true
 ```
 
 **Learning Objectives:**
@@ -454,146 +687,237 @@ kubectl apply -f 08-broken-pod.yaml
 
 ### Step 10: Stateless vs Stateful Applications
 
+### Why We Create This File:
+This Redis deployment demonstrates the difference between stateless and stateful applications. Most applications we've worked with so far are stateless - they don't store critical data locally. Redis is a stateful application that stores data in memory. By deploying Redis without persistent storage, we can observe how container restarts cause data loss, highlighting the need for persistent storage solutions.
+
 **Create:** `09-redis-deployment.yaml`
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+# Redis deployment without persistent storage - data will be lost on pod restart
+apiVersion: apps/v1      # apps/v1 API for Deployment resources
+kind: Deployment         # Using Deployment instead of StatefulSet (we'll see the difference)
 metadata:
   name: redis-deployment
 spec:
-  replicas: 1
+  replicas: 1            # Only one replica since we're not using shared storage
   selector:
     matchLabels:
       app: redis
   template:
     metadata:
       labels:
-        app: redis
+        app: redis       # Labels for pod identification and service selection
     spec:
       containers:
       - name: redis
-        image: redis:alpine
+        image: redis:alpine     # Alpine version for smaller footprint
         ports:
-        - containerPort: 6379
+        - containerPort: 6379   # Standard Redis port
+        # Resource constraints appropriate for Redis workload
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "50m"
+            memory: "64Mi"      # Redis needs memory for data storage
+            cpu: "50m"          # Minimal CPU for basic operations
           limits:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "128Mi"     # Prevent Redis from consuming too much memory
+            cpu: "100m"         # Maximum CPU allocation
 ```
 
-**Test Data Persistence:**
+**Test Data Persistence (Demonstrating Data Loss):**
 ```powershell
+# Deploy Redis without persistent storage
 kubectl apply -f 09-redis-deployment.yaml
 
-# Expose Redis
+# Wait for Redis to be ready
+kubectl wait --for=condition=available --timeout=60s deployment/redis-deployment
+
+# Expose Redis service for internal cluster access
 kubectl expose deployment redis-deployment --port=6379 --type=ClusterIP
 
-# Connect to Redis and add data
+# Connect to Redis and add some test data
 kubectl exec -it deployment/redis-deployment -- redis-cli
-# Inside Redis CLI:
+# ===== COMMANDS TO RUN INSIDE REDIS CLI =====
 # SET mykey "Hello Kubernetes"
+# SET user:1 "Alice"
+# SET user:2 "Bob"
+# LPUSH logs "Application started"
+# LPUSH logs "User logged in"
 # GET mykey
+# LRANGE logs 0 -1
 # exit
+# ===== END REDIS CLI COMMANDS =====
 
-# Delete the pod and see data loss
-kubectl delete pod -l app=redis
-kubectl get pods
-# Wait for new pod to start, then check data
+# Verify our data exists
 kubectl exec -it deployment/redis-deployment -- redis-cli GET mykey
+# Should return: "Hello Kubernetes"
+
+# Now simulate a pod failure by deleting the pod
+kubectl delete pod -l app=redis
+
+# Watch the pod restart automatically (Deployment ensures replica count)
+kubectl get pods -w
+# Wait for the new pod to be Running and Ready
+
+# Test if our data survived the restart (it won't!)
+kubectl exec -it deployment/redis-deployment -- redis-cli GET mykey
+# Expected result: (nil) - data is gone because Redis stored it in container's ephemeral storage
+
+# Try to get the logs we added
+kubectl exec -it deployment/redis-deployment -- redis-cli LRANGE logs 0 -1
+# Expected result: (empty list) - all data is lost
 ```
 
 ### Step 11: Persistent Volumes
 
+### Why We Create This File:
+This configuration solves the data persistence problem we observed in Step 10. By using a PersistentVolumeClaim (PVC) and StatefulSet instead of a Deployment, we ensure that Redis data survives pod restarts and deletions. StatefulSets are designed for stateful applications that need stable network identity and persistent storage.
+
 **Create:** `10-redis-persistent.yaml`
 ```yaml
+# PersistentVolumeClaim requests storage from the cluster
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: redis-pvc
+  name: redis-pvc           # Name to reference this claim in StatefulSet
 spec:
   accessModes:
-  - ReadWriteOnce
+  - ReadWriteOnce           # Volume can be mounted read-write by a single node
+                           # Other modes: ReadOnlyMany, ReadWriteMany
   resources:
     requests:
-      storage: 1Gi
+      storage: 1Gi          # Request 1 Gigabyte of storage
+                           # In production, size this based on expected data volume
 ---
+# StatefulSet provides guarantees about ordering and uniqueness of pods
+# Unlike Deployments, StatefulSet maintains sticky identity for each pod
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis-statefulset
 spec:
-  serviceName: redis-headless
-  replicas: 1
+  serviceName: redis-headless    # Required: name of headless service for network identity
+  replicas: 1                    # Single replica for this learning example
   selector:
     matchLabels:
-      app: redis-persistent
+      app: redis-persistent      # Different label from stateless version
   template:
     metadata:
       labels:
-        app: redis-persistent
+        app: redis-persistent    # Must match selector above
     spec:
       containers:
       - name: redis
         image: redis:alpine
         ports:
         - containerPort: 6379
+        # Volume mount configuration - critical for data persistence
         volumeMounts:
-        - name: redis-storage
-          mountPath: /data
+        - name: redis-storage         # Name must match volume definition below
+          mountPath: /data            # Redis default data directory
+        # Redis configuration for persistence
         command: ["redis-server", "--appendonly", "yes"]
+        # --appendonly yes enables Redis AOF (Append Only File) persistence
+        # This writes every write operation to a log file for durability
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "50m"
+            memory: "64Mi"            # Minimum memory for Redis operations
+            cpu: "50m"                # Minimal CPU requirement
           limits:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "128Mi"           # Maximum memory to prevent OOM
+            cpu: "100m"               # CPU limit for resource sharing
+      # Volumes section defines storage sources
       volumes:
-      - name: redis-storage
+      - name: redis-storage          # Volume name referenced in volumeMounts
         persistentVolumeClaim:
-          claimName: redis-pvc
+          claimName: redis-pvc       # References the PVC defined above
 ---
+# Service for accessing Redis
 apiVersion: v1
 kind: Service
 metadata:
   name: redis-persistent-service
 spec:
   selector:
+    app: redis-persistent           # Routes traffic to StatefulSet pods
+  ports:
+  - port: 6379                      # Service port
+    targetPort: 6379                # Container port
+  type: ClusterIP                   # Internal access only
+---
+# Headless service required by StatefulSet for pod network identity
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless             # Must match serviceName in StatefulSet spec
+spec:
+  clusterIP: None                  # Makes this a headless service
+  selector:
     app: redis-persistent
   ports:
   - port: 6379
     targetPort: 6379
-  type: ClusterIP
 ```
 
-**Test Persistent Storage:**
+**Test Persistent Storage (Proving Data Survives):**
 ```powershell
-# Clean up previous Redis
+# First, clean up the stateless Redis deployment
 kubectl delete deployment redis-deployment
 kubectl delete service redis-deployment
 
-# Apply persistent version
+# Apply the persistent storage configuration
 kubectl apply -f 10-redis-persistent.yaml
 
-# Wait for StatefulSet to be ready
+# Wait for the StatefulSet to be ready and PVC to be bound
+kubectl wait --for=condition=ready --timeout=300s pod/redis-statefulset-0
 kubectl get statefulsets
 kubectl get pvc
+# You should see: redis-pvc   Bound    pvc-xxxxx   1Gi
 
-# Add data
+# Connect to Redis and add persistent data
 kubectl exec -it redis-statefulset-0 -- redis-cli
-# SET persistent-key "This will survive pod restarts"
+# ===== COMMANDS TO RUN INSIDE REDIS CLI =====
+# SET persistent-key "This data will survive pod restarts!"
+# SET user:persistent:1 "Alice (persistent)"
+# SET user:persistent:2 "Bob (persistent)"
+# LPUSH activity-log "User session started"
+# LPUSH activity-log "Data saved to persistent storage"
+# HSET app:config version "2.0"
+# HSET app:config environment "production"
 # GET persistent-key
+# LRANGE activity-log 0 -1
+# HGETALL app:config
 # exit
+# ===== END REDIS CLI COMMANDS =====
 
-# Delete the pod
+# Now test persistence by deleting the pod (this simulates a crash)
 kubectl delete pod redis-statefulset-0
 
-# Wait for automatic recreation and check data
-kubectl get pods
+# Watch StatefulSet automatically recreate the pod with the same name
+kubectl get pods -w
+# Wait for redis-statefulset-0 to be Running and Ready
+
+# Verify our data survived the pod deletion and recreation
 kubectl exec -it redis-statefulset-0 -- redis-cli GET persistent-key
+# Should return: "This data will survive pod restarts!"
+
+# Check all our saved data
+kubectl exec -it redis-statefulset-0 -- redis-cli LRANGE activity-log 0 -1
+kubectl exec -it redis-statefulset-0 -- redis-cli HGETALL app:config
+
+# Test with more data to prove persistence is working
+kubectl exec -it redis-statefulset-0 -- redis-cli
+# ===== ADDITIONAL TEST COMMANDS =====
+# SET test-after-restart "Added after pod restart"
+# LPUSH activity-log "Post-restart activity"
+# GET persistent-key
+# GET test-after-restart
+# LRANGE activity-log 0 -1
+# exit
+# ===== END TEST COMMANDS =====
+
+# Bonus: Examine the persistent volume
+kubectl describe pvc redis-pvc
+kubectl get pv
+# This shows the underlying persistent volume created by your cluster
 ```
 
 **Learning Objectives:**
@@ -608,151 +932,394 @@ kubectl exec -it redis-statefulset-0 -- redis-cli GET persistent-key
 
 ### Step 13: Introduction to Helm
 
-Helm is the package manager for Kubernetes, often called "the apt/yum for Kubernetes." It helps you manage Kubernetes applications through packages called charts.
+### Why We Learn Helm:
+Helm is the package manager for Kubernetes, often called "the apt/yum for Kubernetes." Instead of managing dozens of YAML files manually, Helm allows you to package, version, and deploy applications as reusable charts. This dramatically simplifies application lifecycle management and enables templating for different environments.
 
 **Install Helm:**
 ```powershell
-# Install Helm using winget
+# Install Helm using Windows Package Manager
 winget install Helm.Helm
 
-# Verify installation
+# Verify Helm installation and check version
 helm version
+# Expected output shows both client and server versions
 
-# Add the official stable repository
-helm repo add stable https://charts.helm.sh/stable
-helm repo add bitnami https://charts.bitnami.com/bitnami
+# Add popular Helm repositories for pre-built charts
+helm repo add stable https://charts.helm.sh/stable       # Stable charts (community)
+helm repo add bitnami https://charts.bitnami.com/bitnami # Bitnami charts (production-ready)
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+# Update repository index to get latest chart versions
 helm repo update
+
+# List available repositories
+helm repo list
+
+# Search for available charts (example searches)
+helm search repo nginx          # Find nginx-related charts
+helm search repo redis          # Find redis charts
+helm search repo wordpress      # Find WordPress charts
 ```
 
 ### Step 14: Your First Helm Chart
 
+### Why We Create This Chart:
+Creating your own Helm chart teaches you how to template Kubernetes manifests and make them reusable across different environments. You'll learn about Helm's templating engine, value injection, and how to structure a professional-grade chart that can be shared and versioned.
+
 **Create Your First Chart:**
 ```powershell
-# Create a new chart
+# Create a new Helm chart with standard structure
 helm create my-nginx-chart
 
-# Navigate to the chart directory
+# Navigate to the chart directory to explore the structure
 cd my-nginx-chart
 
-# Examine the chart structure
-ls
+# Examine the chart structure (Helm creates a standard layout)
+Get-ChildItem -Recurse
+# You'll see:
+# Chart.yaml      - Chart metadata (name, version, description)
+# values.yaml     - Default configuration values
+# templates/      - Kubernetes manifest templates
+# charts/         - Dependency charts (if any)
+# .helmignore     - Files to ignore when packaging
+
+# Look at the generated files to understand the structure
+Get-Content Chart.yaml      # Chart metadata
+Get-Content values.yaml     # Default values for templating
 ```
 
-**Customize the Chart:**
+**Customize the Chart Values:**
 
 **Edit:** `my-nginx-chart/values.yaml`
 ```yaml
-# Default values for my-nginx-chart
-replicaCount: 2
+# Default values for my-nginx-chart - these can be overridden during installation
+replicaCount: 2              # Number of pod replicas to create
 
+# Container image configuration
 image:
-  repository: nginx
-  pullPolicy: IfNotPresent
-  tag: "latest"
+  repository: nginx          # Docker image repository
+  pullPolicy: IfNotPresent   # Image pull policy (Always, Never, IfNotPresent)
+  tag: "latest"             # Image tag to use
 
+# Service configuration  
 service:
-  type: NodePort
-  port: 80
-  nodePort: 30003
+  type: NodePort            # Service type (ClusterIP, NodePort, LoadBalancer)
+  port: 80                  # Port the service exposes
+  nodePort: 30003          # Specific NodePort (matches your kind-cluster.yaml mapping)
 
+# Ingress configuration (disabled for this learning example)
 ingress:
-  enabled: false
+  enabled: false            # Set to true to enable ingress
 
+# Resource limits and requests for containers
 resources:
   limits:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 100m               # Maximum CPU (100 millicores)
+    memory: 128Mi           # Maximum memory (128 Mebibytes)
   requests:
-    cpu: 50m
-    memory: 64Mi
+    cpu: 50m                # Guaranteed CPU
+    memory: 64Mi            # Guaranteed memory
 
+# Autoscaling configuration (disabled by default)
 autoscaling:
   enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
 
+# Node selection and tolerations (empty by default)
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Custom application configuration
+appConfig:
+  environment: "development"  # Custom value we'll use in templates
+  debug: true                # Custom debug flag
+  version: "1.0.0"          # Application version
+  requests:
+    cpu: 50m                # Guaranteed CPU
+    memory: 64Mi            # Guaranteed memory
+
+# Autoscaling configuration (disabled by default)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+# Node selection and tolerations (empty by default)
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Custom application configuration
+appConfig:
+  environment: "development"  # Custom value we'll use in templates
+  debug: true                # Custom debug flag
+  version: "1.0.0"          # Application version
 ```
+
+**Customize the Deployment Template:**
 
 **Edit:** `my-nginx-chart/templates/deployment.yaml`
 ```yaml
+# Helm template for Deployment - notice the {{ }} template syntax
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  # Template functions generate names and labels consistently
   name: {{ include "my-nginx-chart.fullname" . }}
   labels:
     {{- include "my-nginx-chart.labels" . | nindent 4 }}
 spec:
+  # Conditional logic - only set replicas if autoscaling is disabled
   {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.replicaCount }}      # Value injection from values.yaml
   {{- end }}
   selector:
     matchLabels:
       {{- include "my-nginx-chart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      # Annotations for custom configuration
+      annotations:
+        # Force pod restart when config changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "my-nginx-chart.selectorLabels" . | nindent 8 }}
+        # Add custom labels from values
+        environment: {{ .Values.appConfig.environment }}
+        version: {{ .Values.appConfig.version }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
+          # Image tag defaults to Chart.AppVersion if not specified
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 80
               protocol: TCP
+          # Environment variables from values
+          env:
+            - name: APP_ENV
+              value: {{ .Values.appConfig.environment | quote }}
+            - name: DEBUG
+              value: {{ .Values.appConfig.debug | quote }}
+            - name: APP_VERSION
+              value: {{ .Values.appConfig.version | quote }}
+          # Enhanced health probes with proper timing
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: 30    # Wait for app to start
+            periodSeconds: 10          # Check every 10 seconds
+            timeoutSeconds: 5          # 5 second timeout
+            failureThreshold: 3        # Restart after 3 failures
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 5
-            periodSeconds: 5
+            initialDelaySeconds: 5     # Check readiness quickly
+            periodSeconds: 5           # Check every 5 seconds
+            timeoutSeconds: 3          # 3 second timeout
+            failureThreshold: 3        # Remove from service after 3 failures
+          # Volume mount for custom configuration
+          volumeMounts:
+            - name: config
+              mountPath: /usr/share/nginx/html/config.json
+              subPath: config.json
+          # Resource constraints from values.yaml
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      # Volume definition for ConfigMap
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "my-nginx-chart.fullname" . }}-config
 ```
+
+**Create a ConfigMap Template:**
+
+**Create:** `my-nginx-chart/templates/configmap.yaml`
+```yaml
+# ConfigMap template demonstrating complex templating
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "my-nginx-chart.fullname" . }}-config
+  labels:
+    {{- include "my-nginx-chart.labels" . | nindent 4 }}
+data:
+  # JSON configuration generated from Helm values
+  config.json: |
+    {
+      "application": {
+        "name": "{{ include "my-nginx-chart.fullname" . }}",
+        "version": "{{ .Values.appConfig.version }}",
+        "environment": "{{ .Values.appConfig.environment }}",
+        "debug": {{ .Values.appConfig.debug }},
+        "replicas": {{ .Values.replicaCount }},
+        "chart": {
+          "name": "{{ .Chart.Name }}",
+          "version": "{{ .Chart.Version }}",
+          "appVersion": "{{ .Chart.AppVersion }}"
+        }
+      },
+      "kubernetes": {
+        "namespace": "{{ .Release.Namespace }}",
+        "release": "{{ .Release.Name }}",
+        "service": "{{ .Release.Service }}"
+      }
+    }
+  # HTML page showing configuration
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{{ include "my-nginx-chart.fullname" . }}</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            h1 { color: #326ce5; }
+            .config { background: #f5f5f5; padding: 20px; border-radius: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>Helm Chart Application</h1>
+        <p><strong>Application:</strong> {{ include "my-nginx-chart.fullname" . }}</p>
+        <p><strong>Version:</strong> {{ .Values.appConfig.version }}</p>
+        <p><strong>Environment:</strong> {{ .Values.appConfig.environment }}</p>
+        <p><strong>Debug Mode:</strong> {{ .Values.appConfig.debug }}</p>
+        <p><strong>Replicas:</strong> {{ .Values.replicaCount }}</p>
+        
+        <h2>Chart Information</h2>
+        <div class="config">
+            <p><strong>Chart Name:</strong> {{ .Chart.Name }}</p>
+            <p><strong>Chart Version:</strong> {{ .Chart.Version }}</p>
+            <p><strong>App Version:</strong> {{ .Chart.AppVersion }}</p>
+            <p><strong>Release Name:</strong> {{ .Release.Name }}</p>
+            <p><strong>Namespace:</strong> {{ .Release.Namespace }}</p>
+        </div>
+        
+        <h2>Links</h2>
+        <ul>
+            <li><a href="/config.json">View JSON Config</a></li>
+        </ul>
+    </body>
+    </html>
+```
+
+**Update the Service Template:**
 
 **Edit:** `my-nginx-chart/templates/service.yaml`
 ```yaml
+# Service template with conditional NodePort configuration
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "my-nginx-chart.fullname" . }}
   labels:
     {{- include "my-nginx-chart.labels" . | nindent 4 }}
+  annotations:
+    # Custom annotations for monitoring
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80"
 spec:
-  type: {{ .Values.service.type }}
+  type: {{ .Values.service.type }}           # Service type from values.yaml
   ports:
-    - port: {{ .Values.service.port }}
-      targetPort: http
+    - port: {{ .Values.service.port }}       # Service port
+      targetPort: http                       # Target container port name
       protocol: TCP
       name: http
+      # Conditional NodePort assignment
       {{- if eq .Values.service.type "NodePort" }}
       nodePort: {{ .Values.service.nodePort }}
       {{- end }}
   selector:
+    # Use template function for consistent label selection
     {{- include "my-nginx-chart.selectorLabels" . | nindent 4 }}
 ```
 
-### Step 15: Deploy with Helm
+### Step 15: Deploy and Manage with Helm
 
 **Deploy Your Chart:**
 ```powershell
-# Navigate back to the main directory
+# Navigate back to the main directory (out of chart folder)
 cd ..
 
-# Install the chart
+# Validate the chart before installation (dry-run)
+helm install my-nginx ./my-nginx-chart --dry-run --debug
+# This shows what Kubernetes manifests would be generated without actually applying them
+
+# Install the chart with default values
 helm install my-nginx ./my-nginx-chart
 
-# Check the release
+# Check the Helm release status
 helm list
+# Shows: NAME, NAMESPACE, REVISION, UPDATED, STATUS, CHART, APP VERSION
+
+# Check all resources created by this Helm release
 kubectl get all -l app.kubernetes.io/instance=my-nginx
+# The app.kubernetes.io/instance label is automatically added by Helm
+
+# View the generated manifests that were actually applied
+helm get manifest my-nginx
+
+# Check the values that were used during installation
+helm get values my-nginx
+
+# Test the deployment
+Start-Process "http://localhost:30003"  # Opens browser to NodePort
+```
+
+**Manage Helm Releases:**
+```powershell
+# Upgrade the release with new values (change replica count)
+helm upgrade my-nginx ./my-nginx-chart --set replicaCount=4
+
+# Check the upgrade
+kubectl get pods -l app.kubernetes.io/instance=my-nginx
+# Should now show 4 pods
+
+# Upgrade with custom values file
+# Create a custom-values.yaml file:
+@"
+replicaCount: 3
+appConfig:
+  environment: "staging"
+  debug: false
+  version: "2.0.0"
+service:
+  nodePort: 30004
+"@ | Out-File -FilePath custom-values.yaml -Encoding UTF8
+
+# Apply the custom values
+helm upgrade my-nginx ./my-nginx-chart -f custom-values.yaml
+
+# Check the updated configuration
+Start-Process "http://localhost:30004"  # New NodePort
+
+# View release history
+helm history my-nginx
+
+# Rollback to previous version if needed
+helm rollback my-nginx 1
+
+# Check rollback worked
+helm history my-nginx
+
+# Uninstall the release (removes all resources)
+helm uninstall my-nginx
+
+# Verify cleanup
+kubectl get all -l app.kubernetes.io/instance=my-nginx
+# Should show no resources
+
+# Clean up the custom values file
+Remove-Item custom-values.yaml
+```
 
 # Test the deployment
 # Open browser to http://localhost:30003
@@ -778,54 +1345,449 @@ helm uninstall my-nginx
 
 ### Step 16: Using Public Helm Charts
 
+**Why We Create This:** Learn to leverage the vast ecosystem of pre-built Helm charts from public repositories. This demonstrates how to quickly deploy complex applications like databases, web servers, and full application stacks without writing manifests from scratch. Understanding public charts is essential for production Kubernetes deployments where you want to use battle-tested, community-maintained configurations.
+
 **Deploy Redis using Bitnami Chart:**
 ```powershell
-# Search for Redis charts
+# Search for Redis charts in all added repositories
+# This shows available Redis charts with their versions and descriptions
 helm search repo redis
 
-# Install Redis using Bitnami chart
+# Search for charts in the Artifact Hub (comprehensive chart registry)
+# This finds charts across all public repositories, not just locally added ones
+helm search hub redis
+
+# Get detailed information about the Bitnami Redis chart
+# Shows chart description, version, app version, and maintainers
+helm show chart bitnami/redis
+
+# View the default values for the Redis chart
+# This shows all configurable parameters and their default values
+helm show values bitnami/redis
+
+# Install Redis using Bitnami chart with custom configurations
+# --set allows you to override default values without creating a values file
+# auth.enabled=false: Disables Redis password authentication for easier testing
+# master.persistence.enabled=false: Disables persistent storage (data will be lost on restart)
+# replica.persistence.enabled=false: Disables persistence for replica nodes too
 helm install my-redis bitnami/redis \
   --set auth.enabled=false \
   --set master.persistence.enabled=false \
-  --set replica.persistence.enabled=false
+  --set replica.persistence.enabled=false \
+  --set replica.replicaCount=1
 
-# Check the installation
+# Alternative: Install with a custom values file for more complex configurations
+# Create a custom-redis-values.yaml file first (see below)
+# helm install my-redis bitnami/redis -f custom-redis-values.yaml
+
+# Check all Kubernetes resources created by this Helm release
+# The label app.kubernetes.io/instance=my-redis is automatically added by Helm
 kubectl get all -l app.kubernetes.io/instance=my-redis
 
-# Get Redis connection info
+# Get detailed information about the Helm release
+# Shows release status, deployed chart version, and notes for connecting to Redis
 helm status my-redis
 
-# Test Redis connection
+# List all Helm releases in the current namespace
+helm list
+
+# Check the Redis pods are running and view their logs
+kubectl get pods -l app.kubernetes.io/name=redis
+kubectl logs -l app.kubernetes.io/name=redis -f
+
+# Test Redis connection using a temporary client pod
+# --rm: Remove pod after exit
+# --tty: Allocate a TTY for interactive session
+# -i: Keep STDIN open for interactive session
+# --restart='Never': Don't restart the pod if it fails
 kubectl run redis-client --rm --tty -i --restart='Never' \
   --image docker.io/bitnami/redis:7.0-debian-11 -- bash
-# Inside the pod:
+
+# Inside the Redis client pod, connect to the Redis master service:
 # redis-cli -h my-redis-master
-# set test-key "Hello from Helm Redis"
-# get test-key
+# SET test-key "Hello from Helm Redis"
+# GET test-key
+# KEYS *
+# INFO replication
 # exit
+
+# Test Redis performance (run this outside the interactive session)
+kubectl run redis-benchmark --rm --tty -i --restart='Never' \
+  --image docker.io/bitnami/redis:7.0-debian-11 -- \
+  redis-benchmark -h my-redis-master -c 10 -n 1000
+
+# View Redis configuration
+kubectl exec -it deployment/my-redis-master -- cat /opt/bitnami/redis/etc/redis.conf
+```
+
+**Create custom Redis values file:**
+
+**Create:** `custom-redis-values.yaml`
+```yaml
+# Custom Redis configuration demonstrating various Helm chart customization options
+
+# Global configuration that applies to all Redis components
+global:
+  # Image registry for all Redis images
+  imageRegistry: "docker.io"
+  # Image pull policy for all containers
+  imagePullPolicy: IfNotPresent
+  # Storage class for persistent volumes (if persistence enabled)
+  storageClass: ""
+
+# Redis master configuration
+master:
+  # Number of master replicas (should always be 1 for Redis)
+  count: 1
+  
+  # Resource requests and limits for the master pod
+  resources:
+    requests:
+      memory: "256Mi"      # Minimum memory allocation
+      cpu: "100m"          # Minimum CPU allocation (0.1 CPU core)
+    limits:
+      memory: "512Mi"      # Maximum memory allocation
+      cpu: "500m"          # Maximum CPU allocation (0.5 CPU core)
+  
+  # Persistence configuration for master
+  persistence:
+    enabled: false          # Disable persistent storage for learning purposes
+    size: "1Gi"            # Size of persistent volume if enabled
+    accessModes:
+      - "ReadWriteOnce"    # Volume can be mounted read-write by single node
+  
+  # Redis configuration parameters
+  configuration: |-
+    # Redis server configuration
+    maxmemory 256mb                    # Maximum memory usage
+    maxmemory-policy allkeys-lru       # Eviction policy when memory limit reached
+    save 900 1                         # Save snapshot if at least 1 key changed in 900 seconds
+    save 300 10                        # Save snapshot if at least 10 keys changed in 300 seconds
+    save 60 10000                      # Save snapshot if at least 10000 keys changed in 60 seconds
+
+# Redis replica configuration
+replica:
+  # Number of read-only replica nodes
+  replicaCount: 1
+  
+  # Resource allocation for replica pods
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+  
+  # Persistence for replicas (usually disabled as they sync from master)
+  persistence:
+    enabled: false
+
+# Authentication settings
+auth:
+  enabled: false            # Disable password authentication for easier learning
+  # password: "mypassword"  # Uncomment to set a specific password
+
+# Service configuration
+service:
+  type: ClusterIP          # Internal service type (ClusterIP, NodePort, LoadBalancer)
+  ports:
+    redis: 6379            # Redis port number
+
+# Metrics and monitoring configuration
+metrics:
+  enabled: true            # Enable Redis metrics exporter for Prometheus
+  serviceMonitor:
+    enabled: false         # Enable Prometheus ServiceMonitor (requires Prometheus Operator)
+  
+  # Resources for metrics exporter sidecar
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "10m"
+    limits:
+      memory: "64Mi"
+      cpu: "50m"
+
+# Network policy configuration (advanced security)
+networkPolicy:
+  enabled: false           # Disable network policies for simplicity
+  allowExternal: true      # Allow external traffic if network policies enabled
+
+# Pod security context
+securityContext:
+  enabled: true
+  fsGroup: 1001           # Group ID for filesystem permissions
+  runAsUser: 1001         # User ID to run Redis processes
+
+# Additional labels and annotations
+commonLabels:
+  environment: "learning"  # Custom label for all resources
+  project: "homelab"
+
+commonAnnotations:
+  managed-by: "helm"       # Custom annotation for all resources
 ```
 
 **Deploy WordPress with MySQL:**
 ```powershell
-# Install WordPress with MySQL
+# View available WordPress charts and their information
+helm search repo wordpress
+helm show chart bitnami/wordpress
+
+# Inspect WordPress default values to understand configuration options
+# This shows database settings, admin credentials, service configuration, etc.
+helm show values bitnami/wordpress | head -50
+
+# Install WordPress with MySQL backend using custom configuration
+# service.type=NodePort: Expose WordPress via NodePort for external access
+# service.nodePorts.http=30004: Specific port number for access (http://localhost:30004)
+# wordpressUsername/Password: Admin credentials for WordPress dashboard
+# mariadb.primary.persistence.enabled=false: Disable MySQL data persistence for learning
+# wordpressBlogName: Custom blog title
+# wordpressEmail: Admin email address
 helm install my-wordpress bitnami/wordpress \
   --set service.type=NodePort \
   --set service.nodePorts.http=30004 \
   --set wordpressUsername=admin \
   --set wordpressPassword=password123 \
-  --set mariadb.primary.persistence.enabled=false
+  --set wordpressBlogName="My K8s Learning Blog" \
+  --set wordpressEmail="admin@homelab.local" \
+  --set mariadb.primary.persistence.enabled=false \
+  --set mariadb.auth.database=wordpress \
+  --set mariadb.auth.username=wpuser
 
-# Wait for deployment
+# Monitor the deployment progress
+# WordPress requires both the web server and MySQL database to be ready
 kubectl get pods -l app.kubernetes.io/instance=my-wordpress -w
 
-# Get WordPress credentials
-echo "WordPress URL: http://localhost:30004"
+# Check all resources created by the WordPress Helm chart
+# This includes deployments, services, secrets, configmaps, and persistent volume claims
+kubectl get all,secrets,configmaps,pvc -l app.kubernetes.io/instance=my-wordpress
+
+# View the WordPress deployment details
+kubectl describe deployment my-wordpress
+
+# Check the MariaDB database deployment
+kubectl describe deployment my-wordpress-mariadb
+
+# Get detailed Helm release information
+# Shows release status, deployed resources, and connection instructions
+helm status my-wordpress
+
+# Check WordPress pod logs for any startup issues
+kubectl logs -l app.kubernetes.io/name=wordpress -f
+
+# Check MariaDB pod logs
+kubectl logs -l app.kubernetes.io/name=mariadb -f
+
+# Test WordPress accessibility
+echo "WordPress is accessible at: http://localhost:30004"
+echo "Admin Dashboard: http://localhost:30004/wp-admin/"
 echo "Username: admin"
 echo "Password: password123"
 
-# Clean up
+# Open browser programmatically (optional)
+# start http://localhost:30004
+
+# Test database connectivity from WordPress pod
+kubectl exec -it deployment/my-wordpress -- wp db check
+
+# View WordPress configuration
+kubectl exec -it deployment/my-wordpress -- cat /opt/bitnami/wordpress/wp-config.php
+
+# Create a backup of WordPress data (if needed)
+kubectl exec -it deployment/my-wordpress -- wp db export /tmp/wordpress-backup.sql
+
+# Scale WordPress (demonstrates multi-pod WordPress limitations without shared storage)
+helm upgrade my-wordpress bitnami/wordpress \
+  --set replicaCount=2 \
+  --reuse-values
+
+# Verify scaling
+kubectl get pods -l app.kubernetes.io/name=wordpress
+
+# Clean up resources when done with testing
+# This removes all Kubernetes resources created by these Helm releases
 helm uninstall my-wordpress
 helm uninstall my-redis
+
+# Verify cleanup
+kubectl get all -l app.kubernetes.io/instance=my-wordpress
+kubectl get all -l app.kubernetes.io/instance=my-redis
+```
+
+**Create custom WordPress values file (optional advanced configuration):**
+
+**Create:** `custom-wordpress-values.yaml`
+```yaml
+# Advanced WordPress configuration with comprehensive customization options
+
+# Global settings
+global:
+  imageRegistry: "docker.io"
+  imagePullPolicy: IfNotPresent
+
+# WordPress application configuration
+image:
+  registry: docker.io
+  repository: bitnami/wordpress
+  tag: "6.3.1-debian-11-r0"
+
+# WordPress admin configuration
+wordpressUsername: admin
+wordpressPassword: SecurePassword123!
+wordpressEmail: admin@homelab.local
+wordpressBlogName: "Kubernetes Learning Blog"
+wordpressFirstName: "K8s"
+wordpressLastName: "Administrator"
+
+# WordPress application settings
+wordpressScheme: http
+wordpressSkipInstall: false        # Set to true to skip WordPress installation wizard
+wordpressExtraConfigContent: |     # Additional PHP configuration
+  define('WP_DEBUG', true);
+  define('WP_DEBUG_LOG', true);
+  define('WP_MEMORY_LIMIT', '256M');
+
+# Service configuration for external access
+service:
+  type: NodePort                    # Service type for external access
+  ports:
+    http: 80                       # Internal HTTP port
+    https: 443                     # Internal HTTPS port
+  nodePorts:
+    http: "30004"                  # External HTTP port
+    https: "30005"                 # External HTTPS port
+  sessionAffinity: None            # Session affinity (None, ClientIP)
+
+# Ingress configuration (alternative to NodePort)
+ingress:
+  enabled: false                   # Enable/disable ingress
+  hostname: wordpress.homelab.local
+  path: /
+  pathType: Prefix
+  tls: false                       # Enable HTTPS termination
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+
+# Resource allocation for WordPress pods
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# Pod configuration
+replicaCount: 1                    # Number of WordPress pods
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001                    # Group for file system permissions
+
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001                  # User ID for running WordPress
+  runAsNonRoot: true
+  readOnlyRootFilesystem: false
+
+# Persistence configuration for WordPress files
+persistence:
+  enabled: false                   # Disable for learning (enables for production)
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  dataSource: {}
+
+# WordPress volume mounts for custom content
+extraVolumes: []
+extraVolumeMounts: []
+
+# MariaDB database configuration
+mariadb:
+  enabled: true                    # Use bundled MariaDB (set false to use external DB)
+  
+  # MariaDB authentication
+  auth:
+    rootPassword: RootPassword123!
+    database: wordpress            # WordPress database name
+    username: wpuser              # WordPress database user
+    password: WpUserPassword123!
+  
+  # MariaDB resource allocation
+  primary:
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+    
+    # MariaDB persistence (disabled for learning)
+    persistence:
+      enabled: false
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 8Gi
+
+# External database configuration (if mariadb.enabled=false)
+externalDatabase:
+  host: ""                         # External database host
+  port: 3306                       # Database port
+  user: wordpress                  # Database username
+  password: ""                     # Database password
+  database: wordpress              # Database name
+  existingSecret: ""               # Existing secret with database credentials
+
+# Health checks and probes
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 120         # Wait 2 minutes before first check
+  periodSeconds: 10                # Check every 10 seconds
+  timeoutSeconds: 5                # Timeout after 5 seconds
+  failureThreshold: 6              # Fail after 6 consecutive failures
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 30          # Wait 30 seconds before first check
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+
+# WordPress plugins and themes (advanced)
+customPostInitScripts:
+  install-plugins.sh: |
+    #!/bin/bash
+    # Install common WordPress plugins
+    wp plugin install contact-form-7 --allow-root
+    wp plugin install yoast-seo --allow-root
+    wp plugin activate contact-form-7 --allow-root
+
+# Monitoring and metrics
+metrics:
+  enabled: false                   # Enable WordPress metrics exporter
+  serviceMonitor:
+    enabled: false                 # Prometheus ServiceMonitor
+
+# Network policies for security
+networkPolicy:
+  enabled: false                   # Enable network policies
+  allowExternal: true              # Allow external traffic
+
+# Additional labels and annotations
+commonLabels:
+  environment: learning
+  app-type: cms
+
+commonAnnotations:
+  deployment-method: helm
+  managed-by: kubernetes
 ```
 
 **Learning Objectives:**
@@ -838,107 +1800,211 @@ helm uninstall my-redis
 
 ## Phase 8: GitOps with ArgoCD
 
+## Phase 8: GitOps with ArgoCD
+
 ### Step 17: Install ArgoCD
+
+**Why We Create This:** Learn GitOps principles by installing ArgoCD, a declarative continuous delivery tool for Kubernetes. ArgoCD enables you to manage applications by storing their desired state in Git repositories and automatically synchronizing them to your cluster. This approach provides version control, rollback capabilities, and ensures that your cluster state matches what's defined in Git - a fundamental practice for production Kubernetes environments.
 
 **Deploy ArgoCD:**
 
-**Create:** `argocd-install.yaml`
+**Create:** `18-argocd-install.yaml`
 ```yaml
+# ArgoCD Namespace - dedicated namespace for ArgoCD components
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: argocd
+  name: argocd                     # Dedicated namespace for GitOps controller
+  labels:
+    name: argocd                   # Label for easy identification
 ---
+# ServiceAccount for ArgoCD Server component
+# ArgoCD Server serves the Web UI and API, needs permissions to manage applications
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  name: argocd-server              # Service account for the ArgoCD web server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
+---
+# ClusterRole for ArgoCD Server - needs cluster-wide permissions to manage applications
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
   name: argocd-server
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
+rules:
+# Permissions to read cluster information
+- apiGroups: [""]
+  resources: ["*"]                 # All core API resources
+  verbs: ["get", "list", "watch"]
+# Permissions to manage applications across all namespaces
+- apiGroups: ["apps"]
+  resources: ["*"]                 # All apps API resources (deployments, etc.)
+  verbs: ["*"]                     # All operations
+- apiGroups: ["argoproj.io"]
+  resources: ["*"]                 # All ArgoCD custom resources
+  verbs: ["*"]
+---
+# ClusterRoleBinding to grant ArgoCD Server the necessary permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-server
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-server              # Reference to the ClusterRole above
+subjects:
+- kind: ServiceAccount
+  name: argocd-server              # Reference to the ServiceAccount above
   namespace: argocd
 ---
+# ArgoCD Server Deployment - Web UI and API server component
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: argocd-server
   namespace: argocd
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
 spec:
-  replicas: 1
+  replicas: 1                      # Single replica for learning environment
   selector:
     matchLabels:
-      app: argocd-server
+      app.kubernetes.io/component: server
+      app.kubernetes.io/name: argocd
   template:
     metadata:
       labels:
-        app: argocd-server
+        app.kubernetes.io/component: server
+        app.kubernetes.io/name: argocd
     spec:
       serviceAccountName: argocd-server
       containers:
       - name: argocd-server
-        image: quay.io/argoproj/argocd:v2.8.4
+        image: quay.io/argoproj/argocd:v2.8.4  # ArgoCD server image
         ports:
-        - containerPort: 8080
-        - containerPort: 8083
+        - containerPort: 8080      # HTTP port for Web UI
+          name: server
+        - containerPort: 8083      # gRPC port for CLI and API access
+          name: grpc
         command:
-        - argocd-server
-        - --insecure
-        - --staticassets
+        - argocd-server            # Main ArgoCD server command
+        args:
+        - --insecure               # Disable TLS for learning (use TLS in production)
+        - --staticassets           # Serve static assets for Web UI
         - /shared/app
         env:
         - name: ARGOCD_SERVER_INSECURE
-          value: "true"
+          value: "true"            # Environment variable to disable TLS
+        - name: ARGOCD_SERVER_ROOT_PATH
+          value: "/"               # Root path for the server
         volumeMounts:
-        - name: static-files
+        - name: static-files       # Mount for static assets
           mountPath: /shared
+        - name: tmp                # Temporary directory mount
+          mountPath: /tmp
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "100m"
+            memory: "256Mi"        # Minimum memory allocation
+            cpu: "100m"            # Minimum CPU allocation
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "512Mi"        # Maximum memory allocation
+            cpu: "500m"            # Maximum CPU allocation
+        # Health checks to ensure server is running properly
+        readinessProbe:
+          httpGet:
+            path: /healthz         # Health check endpoint
+            port: 8080
+          initialDelaySeconds: 10  # Wait 10 seconds before first check
+          periodSeconds: 10        # Check every 10 seconds
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 30  # Wait 30 seconds before first check
+          periodSeconds: 30        # Check every 30 seconds
       volumes:
-      - name: static-files
+      - name: static-files         # Temporary storage for static assets
+        emptyDir: {}
+      - name: tmp                  # Temporary directory
         emptyDir: {}
 ---
+# Service for ArgoCD Server - exposes Web UI and API
 apiVersion: v1
 kind: Service
 metadata:
   name: argocd-server
   namespace: argocd
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
 spec:
   selector:
-    app: argocd-server
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
   ports:
-  - name: http
-    port: 80
-    targetPort: 8080
-    nodePort: 30005
-  - name: grpc
-    port: 443
-    targetPort: 8080
-  type: NodePort
+  - name: http                     # HTTP port for Web UI access
+    port: 80                       # Service port
+    targetPort: 8080              # Container port
+    nodePort: 30005               # External access port
+  - name: grpc                     # gRPC port for CLI access
+    port: 443                      # Service port
+    targetPort: 8083              # Container port
+    nodePort: 30006               # External access port for CLI
+  type: NodePort                   # Expose service externally via NodePort
 ---
+# ArgoCD Repository Server Deployment - handles Git repository operations
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: argocd-repo-server
   namespace: argocd
+  labels:
+    app.kubernetes.io/component: repo-server
+    app.kubernetes.io/name: argocd
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: argocd-repo-server
+      app.kubernetes.io/component: repo-server
+      app.kubernetes.io/name: argocd
   template:
     metadata:
       labels:
-        app: argocd-repo-server
+        app.kubernetes.io/component: repo-server
+        app.kubernetes.io/name: argocd
     spec:
       containers:
       - name: argocd-repo-server
         image: quay.io/argoproj/argocd:v2.8.4
         ports:
-        - containerPort: 8081
+        - containerPort: 8081      # Repository server port
+          name: repo-server
         command:
-        - argocd-repo-server
+        - argocd-repo-server       # Repository server command
+        args:
+        - --redis                  # Redis connection (using in-memory for simplicity)
+        - argocd-redis:6379
+        env:
+        - name: ARGOCD_RECONCILIATION_TIMEOUT
+          value: "180s"            # Timeout for Git operations
+        - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
+          value: "10"              # Maximum parallel Git operations
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: helm-working-dir   # Working directory for Helm operations
+          mountPath: /helm-working-dir
         resources:
           requests:
             memory: "128Mi"
@@ -946,43 +2012,160 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        # Health checks for repository server
+        readinessProbe:
+          tcpSocket:
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 30
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: helm-working-dir     # Temporary storage for Helm operations
+        emptyDir: {}
 ---
+# Service for Repository Server - internal communication only
 apiVersion: v1
 kind: Service
 metadata:
   name: argocd-repo-server
   namespace: argocd
+  labels:
+    app.kubernetes.io/component: repo-server
+    app.kubernetes.io/name: argocd
 spec:
   selector:
-    app: argocd-repo-server
+    app.kubernetes.io/component: repo-server
+    app.kubernetes.io/name: argocd
   ports:
-  - port: 8081
-    targetPort: 8081
+  - name: repo-server
+    port: 8081                     # Internal service port
+    targetPort: 8081              # Container port
 ---
+# Redis for ArgoCD - stores application state and cache
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-redis
+  namespace: argocd
+  labels:
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/name: argocd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: redis
+      app.kubernetes.io/name: argocd
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: redis
+        app.kubernetes.io/name: argocd
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine      # Lightweight Redis image
+        ports:
+        - containerPort: 6379      # Redis standard port
+          name: redis
+        args:
+        - --save                   # Disable persistence for learning
+        - ""
+        - --appendonly             # Disable append-only file
+        - "no"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "25m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        # Redis health checks
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 30
+---
+# Service for Redis - internal communication
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-redis
+  namespace: argocd
+  labels:
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/name: argocd
+spec:
+  selector:
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/name: argocd
+  ports:
+  - name: redis
+    port: 6379                     # Redis service port
+    targetPort: 6379              # Container port
+---
+# ArgoCD Application Controller - manages application lifecycle
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: argocd-application-controller
   namespace: argocd
+  labels:
+    app.kubernetes.io/component: application-controller
+    app.kubernetes.io/name: argocd
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: argocd-application-controller
+      app.kubernetes.io/component: application-controller
+      app.kubernetes.io/name: argocd
   template:
     metadata:
       labels:
-        app: argocd-application-controller
+        app.kubernetes.io/component: application-controller
+        app.kubernetes.io/name: argocd
     spec:
+      serviceAccountName: argocd-server  # Reuse server service account for simplicity
       containers:
       - name: argocd-application-controller
         image: quay.io/argoproj/argocd:v2.8.4
         command:
         - argocd-application-controller
-        - --status-processors
+        args:
+        - --status-processors        # Number of concurrent status processors
         - "20"
-        - --operation-processors
+        - --operation-processors     # Number of concurrent operation processors
         - "10"
+        - --app-resync               # Application resync interval
+        - "180"
+        - --repo-server              # Repository server address
+        - argocd-repo-server:8081
+        - --redis                    # Redis connection
+        - argocd-redis:6379
+        env:
+        - name: ARGOCD_CONTROLLER_REPLICAS
+          value: "1"                 # Number of controller replicas
+        - name: ARGOCD_RECONCILIATION_TIMEOUT
+          value: "180s"              # Reconciliation timeout
+        ports:
+        - containerPort: 8082        # Controller metrics port
+          name: controller
         resources:
           requests:
             memory: "256Mi"
@@ -990,45 +2173,154 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+        # Health checks for application controller
+        readinessProbe:
+          tcpSocket:
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 8082
+          initialDelaySeconds: 60
+          periodSeconds: 30
 ---
-# Create admin user secret
+# Secret containing initial admin password for ArgoCD
 apiVersion: v1
 kind: Secret
 metadata:
   name: argocd-initial-admin-secret
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-secret
+    app.kubernetes.io/part-of: argocd
 type: Opaque
 data:
-  password: YWRtaW4xMjM=  # admin123 (base64 encoded)
+  # Initial admin password: admin123 (base64 encoded)
+  # In production, use a strong password and change it after first login
+  password: YWRtaW4xMjM=
+---
+# ConfigMap for ArgoCD configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Application configuration
+  application.instanceLabelKey: argocd.argoproj.io/instance
+  # Server configuration
+  server.insecure: "true"          # Disable TLS for learning environment
+  # Repository credentials template (for private repos)
+  repositories: |
+    - type: git
+      url: https://github.com
+      usernameSecret:
+        name: github-secret
+        key: username
+      passwordSecret:
+        name: github-secret
+        key: password
 ```
 
 **Install ArgoCD:**
 ```powershell
-# Apply ArgoCD installation
-kubectl apply -f argocd-install.yaml
+# Apply ArgoCD installation manifest
+# This creates all ArgoCD components: server, repo-server, controller, and Redis
+kubectl apply -f 18-argocd-install.yaml
 
-# Wait for ArgoCD to be ready
+# Wait for ArgoCD namespace to be created
+kubectl wait --for=condition=ready --timeout=30s namespace/argocd
+
+# Monitor the deployment progress
+# All ArgoCD components must be ready before proceeding
+kubectl get pods -n argocd -w
+
+# Wait for ArgoCD server to be ready (may take 2-3 minutes)
 kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
 
-# Access ArgoCD UI
-echo "ArgoCD URL: http://localhost:30005"
+# Wait for other components to be ready
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-repo-server -n argocd
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-application-controller -n argocd
+kubectl wait --for=condition=available --timeout=300s deployment/argocd-redis -n argocd
+
+# Verify all pods are running
+kubectl get pods -n argocd
+
+# Check services are accessible
+kubectl get services -n argocd
+
+# Verify ArgoCD server is responding
+kubectl port-forward -n argocd service/argocd-server 8080:80 &
+
+# Test ArgoCD API endpoint
+curl -k http://localhost:8080/healthz
+
+# Stop port-forward
+pkill -f "port-forward.*argocd-server"
+
+# Access ArgoCD UI through NodePort
+echo "ArgoCD Web UI: http://localhost:30005"
 echo "Username: admin"
 echo "Password: admin123"
+echo ""
+echo "ArgoCD CLI Access (if you install ArgoCD CLI):"
+echo "argocd login localhost:30006 --username admin --password admin123 --insecure"
+
+# Optional: Install ArgoCD CLI for command-line management
+# Download from: https://github.com/argoproj/argo-cd/releases/latest
+# For Windows: Download argocd-windows-amd64.exe and rename to argocd.exe
+
+# Verify ArgoCD installation
+kubectl get all -n argocd
+
+# Check ArgoCD logs if there are issues
+kubectl logs -n argocd deployment/argocd-server -f
+kubectl logs -n argocd deployment/argocd-application-controller -f
+kubectl logs -n argocd deployment/argocd-repo-server -f
 ```
 
 ### Step 18: Prepare Git Repository Structure
 
-**Create Application Manifests:**
+**Why We Create This:** Organize Kubernetes manifests in a GitOps-friendly directory structure that ArgoCD can monitor and deploy. This demonstrates how to structure applications for GitOps workflows, where each application has its own directory containing all necessary Kubernetes manifests. This pattern enables ArgoCD to track changes and automatically synchronize the desired state from Git to your cluster.
+
+**Create Application Manifests Directory Structure:**
+
+```powershell
+# Create directory structure for GitOps applications
+# Each application gets its own directory containing all related manifests
+mkdir -p gitops-apps/nginx-app
+mkdir -p gitops-apps/redis-app
+mkdir -p gitops-apps/multi-tier-app
+
+# Verify directory structure
+tree gitops-apps/
+# gitops-apps/
+# ├── nginx-app/
+# ├── redis-app/
+# └── multi-tier-app/
+```
 
 **Create:** `gitops-apps/nginx-app/deployment.yaml`
 ```yaml
+# GitOps-managed Nginx application deployment
+# This file represents the desired state for our web application
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gitops-nginx
+  name: gitops-nginx                 # Unique name for GitOps-managed nginx
   namespace: default
+  labels:
+    app: gitops-nginx
+    managed-by: argocd               # Label indicating GitOps management
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/component: web-server
+    app.kubernetes.io/part-of: gitops-demo
 spec:
-  replicas: 2
+  replicas: 2                        # Start with 2 replicas (can be modified later)
   selector:
     matchLabels:
       app: gitops-nginx
@@ -1036,44 +2328,189 @@ spec:
     metadata:
       labels:
         app: gitops-nginx
+        version: "1.21"              # Version label for tracking
     spec:
       containers:
       - name: nginx
-        image: nginx:1.21
+        image: nginx:1.21            # Specific version for predictable deployments
         ports:
         - containerPort: 80
+          name: http
+        # Resource limits for predictable performance
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "50m"
+            memory: "64Mi"           # Minimum memory allocation
+            cpu: "50m"               # Minimum CPU allocation
           limits:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "128Mi"          # Maximum memory allocation
+            cpu: "100m"              # Maximum CPU allocation
+        # Health checks to ensure container is ready
+        readinessProbe:
+          httpGet:
+            path: /                  # Check root path
+            port: 80
+          initialDelaySeconds: 5     # Wait 5 seconds before first check
+          periodSeconds: 10          # Check every 10 seconds
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15    # Wait 15 seconds before first check
+          periodSeconds: 30          # Check every 30 seconds
+        # Volume mount for custom configuration (to be added later)
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /usr/share/nginx/html
+          readOnly: true
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-html           # Reference to ConfigMap (created below)
+          defaultMode: 0644          # File permissions
 ---
+# Service to expose the GitOps-managed Nginx application
 apiVersion: v1
 kind: Service
 metadata:
   name: gitops-nginx-service
   namespace: default
+  labels:
+    app: gitops-nginx
+    managed-by: argocd
 spec:
   selector:
-    app: gitops-nginx
+    app: gitops-nginx              # Select pods with this label
   ports:
-  - port: 80
-    targetPort: 80
-    nodePort: 30006
-  type: NodePort
+  - name: http
+    port: 80                       # Service port
+    targetPort: 80                 # Container port
+    nodePort: 30007               # External access port
+  type: NodePort                   # Expose externally for testing
+```
+
+**Create:** `gitops-apps/nginx-app/configmap.yaml`
+```yaml
+# ConfigMap containing custom HTML content for the nginx application
+# This demonstrates how configuration is managed separately from the application code
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-html
+  namespace: default
+  labels:
+    app: gitops-nginx
+    managed-by: argocd
+data:
+  # Custom HTML content that can be updated independently
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>GitOps Demo with ArgoCD</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-align: center;
+                padding: 50px;
+            }
+            .container {
+                background: rgba(255,255,255,0.1);
+                padding: 30px;
+                border-radius: 10px;
+                display: inline-block;
+            }
+            .version { 
+                background: #28a745; 
+                padding: 5px 15px; 
+                border-radius: 20px; 
+                display: inline-block;
+                margin: 10px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🚀 Hello from GitOps!</h1>
+            <div class="version">Version: 1.0.0</div>
+            <p>This application is managed by ArgoCD</p>
+            <p>Deployed from Git repository</p>
+            <p>Pod Name: <code id="hostname">Loading...</code></p>
+            <p>Deployment managed declaratively via GitOps principles</p>
+            
+            <h3>GitOps Benefits:</h3>
+            <ul style="text-align: left; display: inline-block;">
+                <li>🔄 Automatic synchronization from Git</li>
+                <li>📝 Declarative configuration management</li>
+                <li>🔍 Version control and audit trail</li>
+                <li>🔄 Easy rollbacks and updates</li>
+                <li>👥 Collaboration through Pull Requests</li>
+            </ul>
+        </div>
+        
+        <script>
+            // Display the hostname (pod name) if available
+            fetch('/hostname').then(r => r.text()).then(hostname => {
+                document.getElementById('hostname').textContent = hostname;
+            }).catch(() => {
+                document.getElementById('hostname').textContent = window.location.hostname;
+            });
+        </script>
+    </body>
+    </html>
+  
+  # Additional configuration files can be added here
+  nginx.conf: |
+    # Custom nginx configuration
+    server {
+        listen 80;
+        server_name localhost;
+        
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ =404;
+        }
+        
+        # Endpoint to return hostname (pod name)
+        location /hostname {
+            return 200 $hostname;
+            add_header Content-Type text/plain;
+        }
+        
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+        
+        # Basic security headers
+        add_header X-Content-Type-Options nosniff;
+        add_header X-Frame-Options DENY;
+        add_header X-XSS-Protection "1; mode=block";
+    }
 ```
 
 **Create:** `gitops-apps/redis-app/deployment.yaml`
 ```yaml
+# GitOps-managed Redis deployment for caching and session storage
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gitops-redis
   namespace: default
+  labels:
+    app: gitops-redis
+    managed-by: argocd
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: gitops-demo
 spec:
-  replicas: 1
+  replicas: 1                        # Redis typically runs as single instance
   selector:
     matchLabels:
       app: gitops-redis
@@ -1081,12 +2518,19 @@ spec:
     metadata:
       labels:
         app: gitops-redis
+        version: "alpine"
     spec:
       containers:
       - name: redis
-        image: redis:alpine
+        image: redis:7-alpine          # Lightweight Alpine-based Redis
         ports:
         - containerPort: 6379
+          name: redis
+        command:
+        - redis-server                 # Redis server command
+        args:
+        - /etc/redis/redis.conf        # Use custom configuration
+        # Resource allocation for Redis
         resources:
           requests:
             memory: "64Mi"
@@ -1094,69 +2538,488 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
+        # Health checks for Redis
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli               # Use Redis CLI for health check
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        # Volume mounts for configuration and data
+        volumeMounts:
+        - name: redis-config
+          mountPath: /etc/redis
+          readOnly: true
+        - name: redis-data             # Temporary data directory
+          mountPath: /data
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config           # Reference to Redis configuration
+          defaultMode: 0644
+      - name: redis-data
+        emptyDir: {}                   # Temporary storage (use PVC for persistence)
 ---
+# Service for Redis - internal access only
 apiVersion: v1
 kind: Service
 metadata:
   name: gitops-redis-service
   namespace: default
+  labels:
+    app: gitops-redis
+    managed-by: argocd
 spec:
   selector:
     app: gitops-redis
   ports:
-  - port: 6379
+  - name: redis
+    port: 6379                       # Standard Redis port
     targetPort: 6379
-  type: ClusterIP
+  type: ClusterIP                    # Internal service only
+```
+
+**Create:** `gitops-apps/redis-app/configmap.yaml`
+```yaml
+# Redis configuration managed via ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: default
+  labels:
+    app: gitops-redis
+    managed-by: argocd
+data:
+  # Redis server configuration
+  redis.conf: |
+    # Redis configuration for GitOps demo
+    # Network and security settings
+    bind 0.0.0.0                     # Listen on all interfaces
+    protected-mode no                # Disable protected mode for internal use
+    port 6379                        # Standard Redis port
+    
+    # Memory management
+    maxmemory 100mb                  # Maximum memory usage
+    maxmemory-policy allkeys-lru     # Eviction policy when memory full
+    
+    # Persistence settings (disabled for demo)
+    save ""                          # Disable automatic snapshots
+    appendonly no                    # Disable append-only file
+    
+    # Logging
+    loglevel notice                  # Log level
+    logfile ""                       # Log to stdout
+    
+    # Performance tuning
+    tcp-keepalive 300                # TCP keepalive
+    timeout 0                        # Client timeout (0 = no timeout)
+    tcp-backlog 511                  # TCP listen backlog
+    
+    # Database settings
+    databases 16                     # Number of databases
+    
+    # Security (basic settings for demo)
+    # requirepass mypassword         # Uncomment to require password
+    
+    # Lua scripting
+    lua-time-limit 5000             # Lua script execution time limit
+    
+    # Slow log (for monitoring)
+    slowlog-log-slower-than 10000   # Log queries slower than 10ms
+    slowlog-max-len 128             # Maximum slow log entries
+    
+    # Client output buffer limits
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+```
+
+**Create:** `gitops-apps/multi-tier-app/frontend-deployment.yaml`
+```yaml
+# Multi-tier application - Frontend component
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-app
+  namespace: default
+  labels:
+    app: frontend-app
+    tier: frontend
+    managed-by: argocd
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend-app
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend-app
+        tier: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+        volumeMounts:
+        - name: frontend-config
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: frontend-config
+        configMap:
+          name: frontend-html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: default
+  labels:
+    app: frontend-app
+    tier: frontend
+spec:
+  selector:
+    app: frontend-app
+    tier: frontend
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 30008
+  type: NodePort
+```
+
+**Test the GitOps Structure:**
+```powershell
+# Verify directory structure is created correctly
+Get-ChildItem -Recurse gitops-apps/
+
+# Validate YAML syntax for all manifests
+kubectl apply --dry-run=client -f gitops-apps/nginx-app/
+kubectl apply --dry-run=client -f gitops-apps/redis-app/
+kubectl apply --dry-run=client -f gitops-apps/multi-tier-app/
+
+# Initialize git repository (if not already done)
+git init
+git add gitops-apps/
+git commit -m "Initial GitOps application structure"
+
+# Note: In production, you would push this to a Git repository
+# that ArgoCD can access (GitHub, GitLab, etc.)
 ```
 
 ### Step 19: Create ArgoCD Applications
 
-**Create:** `argocd-nginx-app.yaml`
+**Why We Create This:** Define ArgoCD Application resources that tell ArgoCD which Git repositories to monitor and how to deploy applications. These Application manifests are the core of GitOps - they describe the desired state, source repository, and deployment target for each application. ArgoCD continuously monitors these definitions and ensures the cluster state matches what's defined in Git.
+
+**Create:** `19-argocd-nginx-app.yaml`
 ```yaml
+# ArgoCD Application definition for the Nginx web application
+# This tells ArgoCD to monitor the nginx-app directory and deploy it to the cluster
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nginx-app
-  namespace: argocd
+  name: nginx-app                   # Name of the application in ArgoCD
+  namespace: argocd                 # ArgoCD applications must be in argocd namespace
+  labels:
+    app.kubernetes.io/name: nginx-gitops
+    managed-by: argocd
+  # Finalizers ensure proper cleanup when application is deleted
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  # Project determines RBAC and resource permissions
+  project: default                  # Use default project (can create custom projects)
+  
+  # Source configuration - where ArgoCD gets the manifests
   source:
-    repoURL: 'file:///c/Users/sinadvd/Documents/VScode/homelab-prj/k8s-homelab/homelab'
-    targetRevision: HEAD
-    path: gitops-apps/nginx-app
+    # Repository URL - in production, use HTTPS Git URLs like:
+    # repoURL: 'https://github.com/username/repo.git'
+    repoURL: 'https://github.com/your-username/homelab-k8s.git'
+    targetRevision: main            # Git branch, tag, or commit to track
+    path: gitops-apps/nginx-app     # Directory containing the manifests
+    
+    # Optional: Directory-specific configuration
+    directory:
+      recurse: true                 # Include subdirectories
+      jsonnet: {}                   # Enable Jsonnet support if needed
+  
+  # Destination configuration - where ArgoCD deploys the application
   destination:
-    server: 'https://kubernetes.default.svc'
-    namespace: default
+    server: 'https://kubernetes.default.svc'  # Target Kubernetes cluster
+    namespace: default              # Target namespace for deployment
+  
+  # Sync policy - how ArgoCD manages the application lifecycle
   syncPolicy:
+    # Automated sync configuration
     automated:
-      prune: true
-      selfHeal: true
+      prune: true                   # Remove resources not in Git
+      selfHeal: true               # Fix drift automatically
+      allowEmpty: false            # Don't sync if no resources found
+    
+    # Sync options for fine-grained control
     syncOptions:
-    - CreateNamespace=true
+    - CreateNamespace=true          # Create namespace if it doesn't exist
+    - PrunePropagationPolicy=foreground  # How to handle resource deletion
+    - PruneLast=true               # Prune resources after applying new ones
+    
+    # Retry configuration for failed syncs
+    retry:
+      limit: 5                     # Maximum retry attempts
+      backoff:
+        duration: 5s               # Initial retry delay
+        factor: 2                  # Backoff multiplier
+        maxDuration: 3m            # Maximum retry delay
+  
+  # Health check configuration
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas               # Ignore replica differences (for HPA)
+  
+  # Revision history limit
+  revisionHistoryLimit: 10         # Keep last 10 revisions for rollback
 ```
 
-**Create:** `argocd-redis-app.yaml`
+**Create:** `19-argocd-redis-app.yaml`
 ```yaml
+# ArgoCD Application definition for Redis caching service
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: redis-app
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: redis-gitops
+    managed-by: argocd
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
+  
   source:
-    repoURL: 'file:///c/Users/sinadvd/Documents/VScode/homelab-prj/k8s-homelab/homelab'
-    targetRevision: HEAD
+    repoURL: 'https://github.com/your-username/homelab-k8s.git'
+    targetRevision: main
     path: gitops-apps/redis-app
+    
+    # Redis-specific source configuration
+    directory:
+      recurse: true
+  
   destination:
     server: 'https://kubernetes.default.svc'
     namespace: default
+  
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    
     syncOptions:
     - CreateNamespace=true
+    - RespectIgnoreDifferences=true
+    
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 1m
+  
+  # Health assessment for Redis
+  ignoreDifferences:
+  - group: ""
+    kind: ConfigMap
+    jsonPointers:
+    - /data/redis.conf             # Ignore config differences that don't affect operation
+```
+
+**Create:** `19-argocd-multi-tier-app.yaml`
+```yaml
+# ArgoCD Application for multi-tier application demo
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: multi-tier-app
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: multi-tier-gitops
+    managed-by: argocd
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: 'https://github.com/your-username/homelab-k8s.git'
+    targetRevision: main
+    path: gitops-apps/multi-tier-app
+  
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: default
+  
+  syncPolicy:
+    # Manual sync for demonstration purposes
+    # automated: {}                # Uncomment for automatic sync
+    
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true      # Only apply resources that are out of sync
+    
+  # Application health check configuration
+  ignoreDifferences: []
+  
+  # Information links for documentation
+  info:
+  - name: 'Documentation'
+    value: 'https://github.com/your-username/homelab-k8s/blob/main/README.md'
+  - name: 'Health Dashboard'
+    value: 'http://localhost:30008'
+```
+
+**Create ArgoCD Project (Optional - Advanced):**
+
+**Create:** `19-argocd-project.yaml`
+```yaml
+# Custom ArgoCD Project for better organization and security
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: homelab-project
+  namespace: argocd
+  labels:
+    managed-by: argocd
+spec:
+  # Description of the project
+  description: 'Homelab Learning Project for GitOps demonstrations'
+  
+  # Source repositories that this project can deploy from
+  sourceRepos:
+  - 'https://github.com/your-username/homelab-k8s.git'
+  - 'https://github.com/your-username/*'  # Allow all repos from user
+  - '*'                           # Allow all repositories (for learning)
+  
+  # Destination clusters and namespaces
+  destinations:
+  - namespace: 'default'
+    server: 'https://kubernetes.default.svc'
+  - namespace: 'learning-*'       # Allow namespaces starting with learning-
+    server: 'https://kubernetes.default.svc'
+  
+  # RBAC configuration for the project
+  roles:
+  - name: admin                   # Admin role for project
+    description: 'Full access to homelab project applications'
+    policies:
+    - p, proj:homelab-project:admin, applications, *, homelab-project/*, allow
+    - p, proj:homelab-project:admin, repositories, *, *, allow
+    groups:
+    - homelab-admins
+  
+  - name: developer               # Developer role with limited access
+    description: 'Developer access for homelab project'
+    policies:
+    - p, proj:homelab-project:developer, applications, get, homelab-project/*, allow
+    - p, proj:homelab-project:developer, applications, sync, homelab-project/*, allow
+    groups:
+    - homelab-developers
+  
+  # Cluster resource whitelist - what can be deployed
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRole
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRoleBinding
+  
+  # Namespace resource whitelist
+  namespaceResourceWhitelist:
+  - group: ''
+    kind: '*'                     # Allow all core resources
+  - group: 'apps'
+    kind: '*'                     # Allow all apps resources
+  - group: 'extensions'
+    kind: '*'                     # Allow extensions
+  
+  # Orphaned resources monitoring
+  orphanedResources:
+    warn: true                    # Warn about orphaned resources
+    ignore:
+    - group: ''
+      kind: Secret
+      name: 'argocd-*'           # Ignore ArgoCD secrets
+```
+
+**Deploy ArgoCD Applications:**
+```powershell
+# First, update the repoURL in the application manifests to point to your actual Git repository
+# For local testing, you can use file:// URLs or create a simple Git server
+
+# Option 1: Use local file system (for testing only)
+# Update repoURL in all application YAMLs to:
+# repoURL: 'file:///c/Users/sinadvd/Documents/VScode/homelab-prj/k8s-homelab/homelab'
+
+# Option 2: Use a Git repository (recommended)
+# 1. Create a Git repository (GitHub, GitLab, etc.)
+# 2. Push your gitops-apps directory to the repository
+# 3. Update repoURL to your repository URL
+
+# Deploy the ArgoCD applications
+kubectl apply -f 19-argocd-nginx-app.yaml
+kubectl apply -f 19-argocd-redis-app.yaml
+kubectl apply -f 19-argocd-multi-tier-app.yaml
+
+# Optional: Deploy custom project
+kubectl apply -f 19-argocd-project.yaml
+
+# Check ArgoCD applications status
+kubectl get applications -n argocd
+
+# Get detailed information about applications
+kubectl describe application nginx-app -n argocd
+kubectl describe application redis-app -n argocd
+
+# Check application health and sync status
+kubectl get applications -n argocd -o wide
+
+# Watch applications sync (this may take a few minutes)
+watch kubectl get applications -n argocd
+
+# Verify deployed resources in target namespace
+kubectl get all -l managed-by=argocd
+
+# Check specific application deployments
+kubectl get pods -l app=gitops-nginx
+kubectl get pods -l app=gitops-redis
+
+# Test application accessibility
+echo "Nginx GitOps App: http://localhost:30007"
+echo "Redis is internal service - test via port-forward if needed"
+
+# Port-forward to test Redis if needed
+kubectl port-forward service/gitops-redis-service 6379:6379 &
+redis-cli -h localhost ping
+pkill -f "port-forward.*gitops-redis"
 ```
 
 ### Step 20: Deploy Applications with ArgoCD
