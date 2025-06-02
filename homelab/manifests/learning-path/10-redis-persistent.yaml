@@ -1,0 +1,82 @@
+# PersistentVolumeClaim requests storage from the cluster
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc           # Name to reference this claim in StatefulSet
+spec:
+  accessModes:
+  - ReadWriteOnce           # Volume can be mounted read-write by a single node
+                           # Other modes: ReadOnlyMany, ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi          # Request 1 Gigabyte of storage
+                           # In production, size this based on expected data volume
+---
+# StatefulSet provides guarantees about ordering and uniqueness of pods
+# Unlike Deployments, StatefulSet maintains sticky identity for each pod
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-statefulset
+spec:
+  serviceName: redis-headless    # Required: name of headless service for network identity
+  replicas: 1                    # Single replica for this learning example
+  selector:
+    matchLabels:
+      app: redis-persistent      # Different label from stateless version
+  template:
+    metadata:
+      labels:
+        app: redis-persistent    # Must match selector above
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        ports:
+        - containerPort: 6379
+        # Volume mount configuration - critical for data persistence
+        volumeMounts:
+        - name: redis-storage         # Name must match volume definition below
+          mountPath: /data            # Redis default data directory
+        # Redis configuration for persistence
+        command: ["redis-server", "--appendonly", "yes"]
+        # --appendonly yes enables Redis AOF (Append Only File) persistence
+        # This writes every write operation to a log file for durability
+        resources:
+          requests:
+            memory: "64Mi"            # Minimum memory for Redis operations
+            cpu: "50m"                # Minimal CPU requirement
+          limits:
+            memory: "128Mi"           # Maximum memory to prevent OOM
+            cpu: "100m"               # CPU limit for resource sharing
+      # Volumes section defines storage sources
+      volumes:
+      - name: redis-storage          # Volume name referenced in volumeMounts
+        persistentVolumeClaim:
+          claimName: redis-pvc       # References the PVC defined above
+---
+# Service for accessing Redis
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-persistent-service
+spec:
+  selector:
+    app: redis-persistent           # Routes traffic to StatefulSet pods
+  ports:
+  - port: 6379                      # Service port
+    targetPort: 6379                # Container port
+  type: ClusterIP                   # Internal access only
+---
+# Headless service required by StatefulSet for pod network identity
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless             # Must match serviceName in StatefulSet spec
+spec:
+  clusterIP: None                  # Makes this a headless service
+  selector:
+    app: redis-persistent
+  ports:
+  - port: 6379
+    targetPort: 6379

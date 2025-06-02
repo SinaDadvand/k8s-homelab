@@ -1,34 +1,63 @@
+# ConfigMaps store non-confidential configuration data in key-value pairs
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nginx-config
+# Data section contains the configuration files
 data:
+  # Custom nginx configuration - replaces the default nginx.conf
   nginx.conf: |
+    # Event processing configuration
     events {
-        worker_connections 1024;
+        worker_connections 1024;    # Max connections per worker process
     }
+    # HTTP server configuration
     http {
         server {
-            listen 80;
+            listen 80;              # Listen on port 80
+            # Main application location
             location / {
                 root /usr/share/nginx/html;
                 index index.html;
             }
+            # Health check endpoint for monitoring and probes
             location /health {
                 return 200 "OK\n";
                 add_header Content-Type text/plain;
             }
+            # Add this location block to return the pod hostname
+            location /hostname {
+                return 200 $hostname;
+                add_header Content-Type text/plain;
+            }
         }
     }
+  # Custom HTML content - will replace the default nginx page
   index.html: |
     <!DOCTYPE html>
     <html>
     <head>
         <title>Learning Kubernetes!</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            h1 { color: #326ce5; }
+        </style>
     </head>
     <body>
         <h1>Hello from Kubernetes!</h1>
-        <p>This is served from a ConfigMap</p>
-        <p>Pod: ${HOSTNAME}</p>
+        <p>This content is served from a ConfigMap</p>
+        <p><strong>Pod:</strong> <span id="podname">Loading...</span></p>
+        <p><em>Configuration as Code in Action!</em></p>
+        <script>
+            // Fetch the hostname from the /hostname endpoint
+            fetch('/hostname')
+                .then(response => response.text())
+                .then(hostname => {
+                    document.getElementById('podname').textContent = hostname;
+                })
+                .catch(error => {
+                    document.getElementById('podname').textContent = "Error fetching hostname";
+                });
+        </script>
     </body>
     </html>

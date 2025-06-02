@@ -9,5 +9,5 @@ spec:
   - name: http
     port: 80
     targetPort: 80
-    nodePort: 30002  # This matches your kind-cluster.yaml port mapping
+    nodePort: 30001  # This matches your kind-cluster.yaml port mapping
   type: NodePort

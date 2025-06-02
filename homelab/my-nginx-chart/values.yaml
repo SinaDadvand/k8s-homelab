@@ -1,0 +1,60 @@
+# Default values for my-nginx-chart - these can be overridden during installation
+replicaCount: 2              # Number of pod replicas to create
+
+# Container image configuration
+image:
+  repository: nginx          # Docker image repository
+  pullPolicy: IfNotPresent   # Image pull policy (Always, Never, IfNotPresent)
+  tag: "latest"             # Image tag to use
+
+# Service configuration  
+service:
+  type: NodePort            # Service type (ClusterIP, NodePort, LoadBalancer)
+  port: 80                  # Port the service exposes
+  nodePort: 30003          # Specific NodePort (matches your kind-cluster.yaml mapping)
+
+# Ingress configuration (disabled for this learning example)
+ingress:
+  enabled: false            # Set to true to enable ingress
+
+# Resource limits and requests for containers
+resources:
+  limits:
+    cpu: 100m               # Maximum CPU (100 millicores)
+    memory: 128Mi           # Maximum memory (128 Mebibytes)
+  requests:
+    cpu: 50m                # Guaranteed CPU
+    memory: 64Mi            # Guaranteed memory
+
+# Autoscaling configuration (disabled by default)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+# Node selection and tolerations (empty by default)
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Custom application configuration
+appConfig:
+  environment: "development"  # Custom value we'll use in templates
+  debug: true                # Custom debug flag
+  version: "1.0.0"          # Application version
+  requests:
+    cpu: 50m                # Guaranteed CPU
+    memory: 64Mi            # Guaranteed memory
+
+# Autoscaling configuration (disabled by default)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+# Node selection and tolerations (empty by default)
+nodeSelector: {}
+tolerations: []
+affinity: {}

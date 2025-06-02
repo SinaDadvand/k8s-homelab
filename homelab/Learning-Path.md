@@ -664,6 +664,11 @@ kubectl describe pod memory-hog
 # Scenario 2: Misconfigured environment variables
 kubectl run env-test --image=nginx --env="MYSQL_HOST=nonexistent-service"
 kubectl logs env-test
+
+# Create a pod that tries to connect to a database
+kubectl run db-test --image=postgres:15 --env="POSTGRES_HOST=nonexistent-db"
+kubectl logs db-test
+
 # Practice reading application logs for configuration errors
 
 # Scenario 3: Network connectivity issues

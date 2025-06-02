@@ -1,0 +1,25 @@
+# Service template with conditional NodePort configuration
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "my-nginx-chart.fullname" . }}
+  labels:
+    {{- include "my-nginx-chart.labels" . | nindent 4 }}
+  annotations:
+    # Custom annotations for monitoring
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80"
+spec:
+  type: {{ .Values.service.type }}           # Service type from values.yaml
+  ports:
+    - port: {{ .Values.service.port }}       # Service port
+      targetPort: http                       # Target container port name
+      protocol: TCP
+      name: http
+      # Conditional NodePort assignment
+      {{- if eq .Values.service.type "NodePort" }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
+  selector:
+    # Use template function for consistent label selection
+    {{- include "my-nginx-chart.selectorLabels" . | nindent 4 }}

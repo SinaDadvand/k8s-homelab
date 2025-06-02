@@ -1,0 +1,64 @@
+# ConfigMap template demonstrating complex templating
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "my-nginx-chart.fullname" . }}-config
+  labels:
+    {{- include "my-nginx-chart.labels" . | nindent 4 }}
+data:
+  # JSON configuration generated from Helm values
+  config.json: |
+    {
+      "application": {
+        "name": "{{ include "my-nginx-chart.fullname" . }}",
+        "version": "{{ .Values.appConfig.version }}",
+        "environment": "{{ .Values.appConfig.environment }}",
+        "debug": {{ .Values.appConfig.debug }},
+        "replicas": {{ .Values.replicaCount }},
+        "chart": {
+          "name": "{{ .Chart.Name }}",
+          "version": "{{ .Chart.Version }}",
+          "appVersion": "{{ .Chart.AppVersion }}"
+        }
+      },
+      "kubernetes": {
+        "namespace": "{{ .Release.Namespace }}",
+        "release": "{{ .Release.Name }}",
+        "service": "{{ .Release.Service }}"
+      }
+    }
+  # HTML page showing configuration
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{{ include "my-nginx-chart.fullname" . }}</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            h1 { color: #326ce5; }
+            .config { background: #f5f5f5; padding: 20px; border-radius: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>Helm Chart Application</h1>
+        <p><strong>Application:</strong> {{ include "my-nginx-chart.fullname" . }}</p>
+        <p><strong>Version:</strong> {{ .Values.appConfig.version }}</p>
+        <p><strong>Environment:</strong> {{ .Values.appConfig.environment }}</p>
+        <p><strong>Debug Mode:</strong> {{ .Values.appConfig.debug }}</p>
+        <p><strong>Replicas:</strong> {{ .Values.replicaCount }}</p>
+        
+        <h2>Chart Information</h2>
+        <div class="config">
+            <p><strong>Chart Name:</strong> {{ .Chart.Name }}</p>
+            <p><strong>Chart Version:</strong> {{ .Chart.Version }}</p>
+            <p><strong>App Version:</strong> {{ .Chart.AppVersion }}</p>
+            <p><strong>Release Name:</strong> {{ .Release.Name }}</p>
+            <p><strong>Namespace:</strong> {{ .Release.Namespace }}</p>
+        </div>
+        
+        <h2>Links</h2>
+        <ul>
+            <li><a href="/config.json">View JSON Config</a></li>
+        </ul>
+    </body>
+    </html>

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-pod
+  # Labels help organize and identify debugging pods
+  labels:
+    purpose: debugging
+    tool: busybox
+spec:
+  containers:
+  - name: busybox
+    # BusyBox image contains many useful debugging tools
+    image: busybox:latest
+    # Keep the container running so we can exec into it
+    command: ['sleep', '3600']    # Sleep for 1 hour
+    # Minimal resource allocation since this is just for debugging
+    resources:
+      requests:
+        memory: "32Mi"    # 32 Mebibytes - very lightweight
+        cpu: "10m"        # 10 millicores - minimal CPU
+      limits:
+        memory: "64Mi"    # Maximum 64 MiB
+        cpu: "50m"        # Maximum 50 millicores
+  # OnFailure restart policy is appropriate for debugging pods
+  restartPolicy: OnFailure

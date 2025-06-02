@@ -1,0 +1,28 @@
+# Redis deployment without persistent storage - data will be lost on pod restart
+apiVersion: apps/v1      # apps/v1 API for Deployment resources
+kind: Deployment         # Using Deployment instead of StatefulSet (we'll see the difference)
+metadata:
+  name: redis-deployment
+spec:
+  replicas: 1            # Only one replica since we're not using shared storage
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis       # Labels for pod identification and service selection
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine     # Alpine version for smaller footprint
+        ports:
+        - containerPort: 6379   # Standard Redis port
+        # Resource constraints appropriate for Redis workload
+        resources:
+          requests:
+            memory: "64Mi"      # Redis needs memory for data storage
+            cpu: "50m"          # Minimal CPU for basic operations
+          limits:
+            memory: "128Mi"     # Prevent Redis from consuming too much memory
+            cpu: "100m"         # Maximum CPU allocation

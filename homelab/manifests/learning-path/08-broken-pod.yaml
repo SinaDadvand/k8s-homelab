@@ -1,0 +1,11 @@
+# This Pod demonstrates common failure patterns in Kubernetes deployments
+apiVersion: v1        # Using the core v1 API for basic Pod resources
+kind: Pod            # Defining a single Pod (not managed by a controller)
+metadata:
+  name: broken-pod   # Simple descriptive name for our troubleshooting exercise
+spec:
+  containers:        # Container specifications - this is where our intentional error lives
+  - name: broken-container           # Container name for identification in logs
+    image: nginx:latest    # INTENTIONAL ERROR: This tag doesn't exist, causing ImagePullBackOff
+    ports:
+    - containerPort: 80              # Standard HTTP port for nginx (won't matter since container won't start)

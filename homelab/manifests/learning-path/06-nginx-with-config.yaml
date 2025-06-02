@@ -10,29 +10,37 @@ spec:
   template:
     metadata:
       labels:
-        app: nginx-config
+        app: nginx-config      # Different label to distinguish from previous deployment
     spec:
       containers:
       - name: nginx
         image: nginx:latest
         ports:
         - containerPort: 80
+        # Volume mounts define where to mount the ConfigMap data inside the container
         volumeMounts:
+        # Mount the custom nginx.conf file to replace the default configuration
         - name: nginx-config-volume
-          mountPath: /etc/nginx/nginx.conf
-          subPath: nginx.conf
+          mountPath: /etc/nginx/nginx.conf    # Destination path in container
+          subPath: nginx.conf                 # Specific key from ConfigMap
+        # Mount the custom HTML file to replace the default nginx page
         - name: html-volume
           mountPath: /usr/share/nginx/html/index.html
           subPath: index.html
+        # Environment variables can be injected from various sources
         env:
+        # Get the pod name and make it available as HOSTNAME environment variable
         - name: HOSTNAME
           valueFrom:
             fieldRef:
-              fieldPath: metadata.name
+              fieldPath: metadata.name        # Reference to pod metadata
+      # Volumes section defines the data sources to mount
       volumes:
+      # Volume sourced from our nginx-config ConfigMap
       - name: nginx-config-volume
         configMap:
-          name: nginx-config
+          name: nginx-config                  # Must match the ConfigMap name
+      # Same ConfigMap used for HTML content (demonstrates reuse)
       - name: html-volume
         configMap:
           name: nginx-config
