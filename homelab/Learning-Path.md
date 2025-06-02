@@ -20,9 +20,13 @@ This learning path will take you through essential Kubernetes concepts using pra
 ### Step 1: Create Your KIND Cluster
 ```powershell
 # Navigate to your project directory
-cd c:\Users\sinadvd\Documents\VScode\homelab-prj\k8s-homelab\homelab
+cd c:\Users\sinad\VS Code\homelab-prj\homelab
 
 # Create the cluster using your configuration
+# The kind-cluster.yaml includes extraPortMappings for NodePorts:
+# - 30001 (sample-app)
+# - 30002 (available for future use)  
+# - 30003 (Helm chart)
 kind create cluster --config kind-cluster.yaml
 
 # Verify cluster is running
@@ -1006,6 +1010,13 @@ image:
   pullPolicy: IfNotPresent   # Image pull policy (Always, Never, IfNotPresent)
   tag: "latest"             # Image tag to use
 
+# Service Account configuration
+serviceAccount:
+  create: true              # Create a service account
+  automount: true           # Automatically mount service account token
+  annotations: {}           # Annotations to add to the service account
+  name: ""                  # The name of the service account (if empty, uses fullname template)
+
 # Service configuration  
 service:
   type: NodePort            # Service type (ClusterIP, NodePort, LoadBalancer)
@@ -1042,71 +1053,42 @@ appConfig:
   environment: "development"  # Custom value we'll use in templates
   debug: true                # Custom debug flag
   version: "1.0.0"          # Application version
-  requests:
-    cpu: 50m                # Guaranteed CPU
-    memory: 64Mi            # Guaranteed memory
-
-# Autoscaling configuration (disabled by default)
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  targetCPUUtilizationPercentage: 80
-
-# Node selection and tolerations (empty by default)
-nodeSelector: {}
-tolerations: []
-affinity: {}
-
-# Custom application configuration
-appConfig:
-  environment: "development"  # Custom value we'll use in templates
-  debug: true                # Custom debug flag
-  version: "1.0.0"          # Application version
 ```
 
 **Customize the Deployment Template:**
 
 **Edit:** `my-nginx-chart/templates/deployment.yaml`
 ```yaml
-# Helm template for Deployment - notice the {{ }} template syntax
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  # Template functions generate names and labels consistently
   name: {{ include "my-nginx-chart.fullname" . }}
   labels:
     {{- include "my-nginx-chart.labels" . | nindent 4 }}
 spec:
-  # Conditional logic - only set replicas if autoscaling is disabled
   {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}      # Value injection from values.yaml
+  replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
       {{- include "my-nginx-chart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      # Annotations for custom configuration
       annotations:
-        # Force pod restart when config changes
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "my-nginx-chart.selectorLabels" . | nindent 8 }}
-        # Add custom labels from values
         environment: {{ .Values.appConfig.environment }}
         version: {{ .Values.appConfig.version }}
     spec:
       containers:
-        - name: {{ .Chart.Name }}
-          # Image tag defaults to Chart.AppVersion if not specified
+                - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 80
               protocol: TCP
-          # Environment variables from values
           env:
             - name: APP_ENV
               value: {{ .Values.appConfig.environment | quote }}
@@ -1114,32 +1096,28 @@ spec:
               value: {{ .Values.appConfig.debug | quote }}
             - name: APP_VERSION
               value: {{ .Values.appConfig.version | quote }}
-          # Enhanced health probes with proper timing
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 30    # Wait for app to start
-            periodSeconds: 10          # Check every 10 seconds
-            timeoutSeconds: 5          # 5 second timeout
-            failureThreshold: 3        # Restart after 3 failures
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 5     # Check readiness quickly
-            periodSeconds: 5           # Check every 5 seconds
-            timeoutSeconds: 3          # 3 second timeout
-            failureThreshold: 3        # Remove from service after 3 failures
-          # Volume mount for custom configuration
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: config
               mountPath: /usr/share/nginx/html/config.json
               subPath: config.json
-          # Resource constraints from values.yaml
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      # Volume definition for ConfigMap
       volumes:
         - name: config
           configMap:
@@ -1220,7 +1198,6 @@ data:
 
 **Edit:** `my-nginx-chart/templates/service.yaml`
 ```yaml
-# Service template with conditional NodePort configuration
 apiVersion: v1
 kind: Service
 metadata:
@@ -1228,23 +1205,36 @@ metadata:
   labels:
     {{- include "my-nginx-chart.labels" . | nindent 4 }}
   annotations:
-    # Custom annotations for monitoring
     prometheus.io/scrape: "true"
     prometheus.io/port: "80"
 spec:
-  type: {{ .Values.service.type }}           # Service type from values.yaml
+  type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.service.port }}       # Service port
-      targetPort: http                       # Target container port name
+    - port: {{ .Values.service.port }}
+      targetPort: http
       protocol: TCP
       name: http
-      # Conditional NodePort assignment
       {{- if eq .Values.service.type "NodePort" }}
       nodePort: {{ .Values.service.nodePort }}
-      {{- end }}
-  selector:
-    # Use template function for consistent label selection
+      {{- end }}  selector:
     {{- include "my-nginx-chart.selectorLabels" . | nindent 4 }}
+```
+
+**Add Missing Helper Function:**
+
+**Edit:** `my-nginx-chart/templates/_helpers.tpl`
+Add the following helper function at the end of the file:
+```yaml
+{{/*
+Create the name of the service account to use
+*/}}
+{{- define "my-nginx-chart.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create }}
+{{- default (include "my-nginx-chart.fullname" .) .Values.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
 ```
 
 ### Step 15: Deploy and Manage with Helm
@@ -1255,98 +1245,72 @@ spec:
 cd ..
 
 # Validate the chart before installation (dry-run)
-helm install my-nginx ./my-nginx-chart --dry-run --debug
-# This shows what Kubernetes manifests would be generated without actually applying them
+helm template my-nginx-release my-nginx-chart --debug
 
 # Install the chart with default values
-helm install my-nginx ./my-nginx-chart
+helm install my-nginx-release my-nginx-chart
 
 # Check the Helm release status
 helm list
-# Shows: NAME, NAMESPACE, REVISION, UPDATED, STATUS, CHART, APP VERSION
 
 # Check all resources created by this Helm release
-kubectl get all -l app.kubernetes.io/instance=my-nginx
-# The app.kubernetes.io/instance label is automatically added by Helm
+kubectl get all -l app.kubernetes.io/instance=my-nginx-release
 
 # View the generated manifests that were actually applied
-helm get manifest my-nginx
+helm get manifest my-nginx-release
 
 # Check the values that were used during installation
-helm get values my-nginx
+helm get values my-nginx-release
 
 # Test the deployment
-Start-Process "http://localhost:30003"  # Opens browser to NodePort
+helm test my-nginx-release
+
+# Access the application
+curl http://localhost:30003
+# Access the custom config endpoint
+curl http://localhost:30003/config.json
 ```
 
 **Manage Helm Releases:**
 ```powershell
 # Upgrade the release with new values (change replica count)
-helm upgrade my-nginx ./my-nginx-chart --set replicaCount=4
+helm upgrade my-nginx-release my-nginx-chart --set replicaCount=4
 
 # Check the upgrade
-kubectl get pods -l app.kubernetes.io/instance=my-nginx
-# Should now show 4 pods
+kubectl get pods -l app.kubernetes.io/instance=my-nginx-release
 
-# Upgrade with custom values file
-# Create a custom-values.yaml file:
+# Create custom values file for more complex changes
 @"
 replicaCount: 3
 appConfig:
   environment: "staging"
   debug: false
   version: "2.0.0"
-service:
-  nodePort: 30004
 "@ | Out-File -FilePath custom-values.yaml -Encoding UTF8
 
 # Apply the custom values
-helm upgrade my-nginx ./my-nginx-chart -f custom-values.yaml
-
-# Check the updated configuration
-Start-Process "http://localhost:30004"  # New NodePort
+helm upgrade my-nginx-release my-nginx-chart -f custom-values.yaml
 
 # View release history
-helm history my-nginx
+helm history my-nginx-release
 
 # Rollback to previous version if needed
-helm rollback my-nginx 1
+helm rollback my-nginx-release 1
 
 # Check rollback worked
-helm history my-nginx
+helm history my-nginx-release
 
 # Uninstall the release (removes all resources)
-helm uninstall my-nginx
+helm uninstall my-nginx-release
 
 # Verify cleanup
-kubectl get all -l app.kubernetes.io/instance=my-nginx
-# Should show no resources
+kubectl get all -l app.kubernetes.io/instance=my-nginx-release
 
 # Clean up the custom values file
-Remove-Item custom-values.yaml
+Remove-Item custom-values.yaml -ErrorAction SilentlyContinue
 ```
 
-# Test the deployment
-# Open browser to http://localhost:30003
-```
 
-**Manage Helm Releases:**
-```powershell
-# Upgrade the release with new values
-helm upgrade my-nginx ./my-nginx-chart --set replicaCount=3
-
-# Check the upgrade
-kubectl get pods -l app.kubernetes.io/instance=my-nginx
-
-# View release history
-helm history my-nginx
-
-# Rollback if needed
-helm rollback my-nginx 1
-
-# Uninstall the release
-helm uninstall my-nginx
-```
 
 ### Step 16: Using Public Helm Charts
 
