@@ -10,6 +10,7 @@ Before you begin, ensure you have the following installed:
 *   [Docker](https://docs.docker.com/get-docker/)
 *   [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
 *   [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+*   [Helm](https://helm.sh/docs/intro/install/)
 
 ## Initial Setup
 
@@ -64,6 +65,119 @@ Before you begin, ensure you have the following installed:
       kubectl port-forward service/hello-world-service 8080:80
       ```
       Then open your browser and go to `http://localhost:8080`.
+
+## 🏃‍♂️ Quick Start
+
+This guide provides a quick start to deploying a sample application and accessing it via NodePort.
+
+### Deploy the Sample Application
+```bash
+# Navigate to the manifests/sample-app directory
+cd manifests/sample-app
+
+# Deploy the application
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+
+# Verify the deployment and service
+kubectl get deployments
+kubectl get services
+```
+
+### Access the Application
+The sample application is exposed on **NodePort 30001**:
+
+```bash
+# Access the application
+curl http://localhost:30001
+```
+
+## 📦 Helm Chart Deployment
+
+This section covers the deployment of a custom Nginx Helm chart.
+
+### Install the Custom Nginx Chart
+```bash
+# Navigate to the homelab directory
+cd homelab
+
+# Install the Helm chart
+helm install my-nginx-release my-nginx-chart
+
+# Check the deployment status
+kubectl get all -l app.kubernetes.io/instance=my-nginx-release
+
+# Test the deployment
+helm test my-nginx-release
+```
+
+### Access the Helm-Deployed Application
+The Helm chart deploys nginx with custom configuration on **NodePort 30003**:
+
+```bash
+# Access the main application
+curl http://localhost:30003
+
+# Access the custom configuration endpoint
+curl http://localhost:30003/config.json
+```
+
+### Helm Chart Features
+Our custom Helm chart demonstrates:
+- **Template Functions**: Consistent naming and labeling
+- **Value Injection**: Configuration from `values.yaml`
+- **ConfigMap Integration**: Custom configuration files
+- **Health Probes**: Liveness and readiness checks
+- **Resource Management**: CPU and memory limits
+- **Service Account**: Kubernetes RBAC integration
+- **Testing**: Built-in connectivity tests
+
+### Helm Chart Management
+```bash
+# View all Helm releases
+helm list
+
+# Upgrade the release
+helm upgrade my-nginx-release my-nginx-chart
+
+# Uninstall the release
+helm uninstall my-nginx-release
+
+# View chart templates without installing
+helm template test-release my-nginx-chart
+```
+
+## 🔧 Advanced Topics
+
+This section includes advanced topics for customizing and managing your Kubernetes home lab.
+
+### Helm Chart Structure
+```
+my-nginx-chart/
+├── Chart.yaml              # Chart metadata
+├── values.yaml              # Default configuration values
+├── charts/                  # Chart dependencies (empty)
+└── templates/
+    ├── _helpers.tpl         # Template helper functions
+    ├── configmap.yaml       # ConfigMap with custom configuration
+    ├── deployment.yaml      # Application deployment
+    ├── service.yaml         # NodePort service
+    ├── serviceaccount.yaml  # Service account for RBAC
+    ├── ingress.yaml         # Ingress configuration (optional)
+    ├── hpa.yaml            # Horizontal Pod Autoscaler (optional)
+    ├── NOTES.txt           # Post-install instructions
+    └── tests/
+        └── test-connection.yaml  # Connectivity test
+```
+
+### Helm Template Best Practices Demonstrated
+1. **Consistent Naming**: Using helper functions for names and labels
+2. **Configuration Management**: Separating config from templates using `values.yaml`
+3. **Conditional Logic**: Only creating resources when needed (autoscaling, ingress)
+4. **Resource Management**: Setting appropriate CPU/memory limits
+5. **Health Monitoring**: Implementing proper liveness and readiness probes
+6. **Testing**: Including automated tests for deployments
+7. **Documentation**: Providing clear installation notes
 
 ## NodePort Access on Windows
 

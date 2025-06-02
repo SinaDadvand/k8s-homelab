@@ -43,18 +43,15 @@ appConfig:
   environment: "development"  # Custom value we'll use in templates
   debug: true                # Custom debug flag
   version: "1.0.0"          # Application version
-  requests:
-    cpu: 50m                # Guaranteed CPU
-    memory: 64Mi            # Guaranteed memory
-
-# Autoscaling configuration (disabled by default)
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  targetCPUUtilizationPercentage: 80
 
 # Node selection and tolerations (empty by default)
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Service Account configuration
+serviceAccount:
+  create: true              # Create a service account
+  automount: true           # Automatically mount service account token
+  annotations: {}           # Annotations to add to the service account
+  name: ""                  # The name of the service account (if empty, uses fullname template)

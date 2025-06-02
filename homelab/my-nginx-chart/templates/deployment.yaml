@@ -1,41 +1,33 @@
-# Helm template for Deployment - notice the {{ }} template syntax
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  # Template functions generate names and labels consistently
   name: {{ include "my-nginx-chart.fullname" . }}
   labels:
     {{- include "my-nginx-chart.labels" . | nindent 4 }}
 spec:
-  # Conditional logic - only set replicas if autoscaling is disabled
   {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}      # Value injection from values.yaml
+  replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
       {{- include "my-nginx-chart.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      # Annotations for custom configuration
       annotations:
-        # Force pod restart when config changes
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "my-nginx-chart.selectorLabels" . | nindent 8 }}
-        # Add custom labels from values
         environment: {{ .Values.appConfig.environment }}
         version: {{ .Values.appConfig.version }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
-          # Image tag defaults to Chart.AppVersion if not specified
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 80
               protocol: TCP
-          # Environment variables from values
           env:
             - name: APP_ENV
               value: {{ .Values.appConfig.environment | quote }}
@@ -43,32 +35,28 @@ spec:
               value: {{ .Values.appConfig.debug | quote }}
             - name: APP_VERSION
               value: {{ .Values.appConfig.version | quote }}
-          # Enhanced health probes with proper timing
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 30    # Wait for app to start
-            periodSeconds: 10          # Check every 10 seconds
-            timeoutSeconds: 5          # 5 second timeout
-            failureThreshold: 3        # Restart after 3 failures
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 5     # Check readiness quickly
-            periodSeconds: 5           # Check every 5 seconds
-            timeoutSeconds: 3          # 3 second timeout
-            failureThreshold: 3        # Remove from service after 3 failures
-          # Volume mount for custom configuration
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
           volumeMounts:
             - name: config
               mountPath: /usr/share/nginx/html/config.json
               subPath: config.json
-          # Resource constraints from values.yaml
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      # Volume definition for ConfigMap
       volumes:
         - name: config
           configMap:
