@@ -1082,7 +1082,7 @@ spec:
         version: {{ .Values.appConfig.version }}
     spec:
       containers:
-                - name: {{ .Chart.Name }}
+        - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
@@ -1216,7 +1216,8 @@ spec:
       name: http
       {{- if eq .Values.service.type "NodePort" }}
       nodePort: {{ .Values.service.nodePort }}
-      {{- end }}  selector:
+      {{- end }}    
+  selector:
     {{- include "my-nginx-chart.selectorLabels" . | nindent 4 }}
 ```
 

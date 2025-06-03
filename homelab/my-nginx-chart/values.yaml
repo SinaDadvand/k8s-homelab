@@ -7,6 +7,13 @@ image:
   pullPolicy: IfNotPresent   # Image pull policy (Always, Never, IfNotPresent)
   tag: "latest"             # Image tag to use
 
+# Service Account configuration
+serviceAccount:
+  create: true              # Create a service account
+  automount: true           # Automatically mount service account token
+  annotations: {}           # Annotations to add to the service account
+  name: ""                  # The name of the service account (if empty, uses fullname template)
+
 # Service configuration  
 service:
   type: NodePort            # Service type (ClusterIP, NodePort, LoadBalancer)
@@ -43,15 +50,3 @@ appConfig:
   environment: "development"  # Custom value we'll use in templates
   debug: true                # Custom debug flag
   version: "1.0.0"          # Application version
-
-# Node selection and tolerations (empty by default)
-nodeSelector: {}
-tolerations: []
-affinity: {}
-
-# Service Account configuration
-serviceAccount:
-  create: true              # Create a service account
-  automount: true           # Automatically mount service account token
-  annotations: {}           # Annotations to add to the service account
-  name: ""                  # The name of the service account (if empty, uses fullname template)
