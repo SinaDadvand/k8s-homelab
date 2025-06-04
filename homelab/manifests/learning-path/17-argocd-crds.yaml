@@ -1,0 +1,16 @@
+# ArgoCD Custom Resource Definitions (CRDs)
+# These must be installed BEFORE deploying ArgoCD components
+# ArgoCD requires these CRDs to manage Applications and Projects
+
+# Install these CRDs by running:
+# kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/application-crd.yaml
+# kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/appproject-crd.yaml  
+# kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/applicationset-crd.yaml
+
+# Alternatively, you can download and apply them locally:
+# curl -o argocd-crds.yaml https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/application-crd.yaml
+# curl -o argocd-appproject-crd.yaml https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/appproject-crd.yaml
+# curl -o argocd-applicationset-crd.yaml https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/applicationset-crd.yaml
+
+# For offline installation, the CRDs content would be included here
+# This is a reference file - use the kubectl apply commands above for installation

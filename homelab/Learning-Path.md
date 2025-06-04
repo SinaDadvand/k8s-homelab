@@ -2197,17 +2197,30 @@ data:
 ```
 
 **Install ArgoCD:**
+
+**Step 1: Install ArgoCD Custom Resource Definitions (CRDs)**
+```powershell
+# IMPORTANT: ArgoCD CRDs must be installed BEFORE deploying ArgoCD components
+# These CRDs define the ArgoCD Application and AppProject resources
+
+# Install ArgoCD CRDs from official repository
+kubectl apply -f "https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/application-crd.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/appproject-crd.yaml"
+kubectl apply -f "https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.4/manifests/crds/applicationset-crd.yaml"
+
+# Verify CRDs are installed
+kubectl get crd | Select-String "argoproj"
+```
+
+**Step 2: Deploy ArgoCD Components**
 ```powershell
 # Apply ArgoCD installation manifest
 # This creates all ArgoCD components: server, repo-server, controller, and Redis
-kubectl apply -f 18-argocd-install.yaml
-
-# Wait for ArgoCD namespace to be created
-kubectl wait --for=condition=ready --timeout=30s namespace/argocd
+kubectl apply -f manifests/learning-path/18-argocd-install.yaml
 
 # Monitor the deployment progress
 # All ArgoCD components must be ready before proceeding
-kubectl get pods -n argocd -w
+kubectl get pods -n argocd
 
 # Wait for ArgoCD server to be ready (may take 2-3 minutes)
 kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd
@@ -2219,26 +2232,23 @@ kubectl wait --for=condition=available --timeout=300s deployment/argocd-redis -n
 
 # Verify all pods are running
 kubectl get pods -n argocd
+```
 
+**Step 3: Access ArgoCD UI**
+```powershell
 # Check services are accessible
 kubectl get services -n argocd
 
-# Verify ArgoCD server is responding
-kubectl port-forward -n argocd service/argocd-server 8080:80 &
+# Test ArgoCD server health
+Invoke-WebRequest -Uri "http://localhost:30001/healthz"
 
-# Test ArgoCD API endpoint
-curl -k http://localhost:8080/healthz
-
-# Stop port-forward
-pkill -f "port-forward.*argocd-server"
-
-# Access ArgoCD UI through NodePort
-echo "ArgoCD Web UI: http://localhost:30005"
-echo "Username: admin"
-echo "Password: admin123"
-echo ""
-echo "ArgoCD CLI Access (if you install ArgoCD CLI):"
-echo "argocd login localhost:30006 --username admin --password admin123 --insecure"
+# Access ArgoCD Web UI
+Write-Host "ArgoCD Web UI: http://localhost:30001"
+Write-Host "Username: admin"
+Write-Host "Password: admin123"
+Write-Host ""
+Write-Host "ArgoCD CLI Access (if you install ArgoCD CLI):"
+Write-Host "argocd login localhost:30002 --username admin --password admin123 --insecure"
 
 # Optional: Install ArgoCD CLI for command-line management
 # Download from: https://github.com/argoproj/argo-cd/releases/latest
@@ -2249,8 +2259,37 @@ kubectl get all -n argocd
 
 # Check ArgoCD logs if there are issues
 kubectl logs -n argocd deployment/argocd-server -f
-kubectl logs -n argocd deployment/argocd-application-controller -f
-kubectl logs -n argocd deployment/argocd-repo-server -f
+```
+
+**Troubleshooting ArgoCD Installation:**
+
+If you encounter issues, here are common problems and solutions:
+
+```powershell
+# Problem 1: ArgoCD server shows "appprojects.argoproj.io not found" error
+# Solution: Install CRDs first (Step 1 above)
+kubectl get crd | Select-String "argoproj"
+# If no results, run the CRD installation commands from Step 1
+
+# Problem 2: Pods stuck in "ContainerCreating" or "ImagePullBackOff"
+# Check pod events for more details
+kubectl describe pods -n argocd
+
+# Problem 3: ArgoCD server not accessible on NodePort
+# Verify service configuration
+kubectl get services -n argocd
+# Check if Kind cluster extraPortMappings include 30001 and 30002
+
+# Problem 4: Check ArgoCD server logs for specific errors
+kubectl logs -n argocd deployment/argocd-server --tail=50
+
+# Problem 5: Reset ArgoCD installation if needed
+kubectl delete namespace argocd
+# Wait for namespace deletion, then reinstall starting from Step 1
+
+# Verify cluster port mappings in Kind
+docker ps | Select-String "homelab-control-plane"
+# Should show port mappings: 0.0.0.0:30001->30001/tcp, 0.0.0.0:30002->30002/tcp
 ```
 
 ### Step 18: Prepare Git Repository Structure
