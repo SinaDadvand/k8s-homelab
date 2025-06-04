@@ -38,7 +38,26 @@ rules:
   resources: ["*"]                 # All ArgoCD custom resources
   verbs: ["*"]
 ---
-# ClusterRoleBinding to grant ArgoCD Server the necessary permissions
+# Role for ArgoCD Server - needs permissions to manage secrets in argocd namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
+rules:
+# Permissions to manage secrets in the argocd namespace
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Permissions to manage configmaps in the argocd namespace
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# ClusterRoleBinding to grant ArgoCD Server the necessary cluster-wide permissions
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -50,6 +69,24 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: argocd-server              # Reference to the ClusterRole above
+subjects:
+- kind: ServiceAccount
+  name: argocd-server              # Reference to the ServiceAccount above
+  namespace: argocd
+---
+# RoleBinding to grant ArgoCD Server the necessary namespace permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/name: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-server              # Reference to the Role above
 subjects:
 - kind: ServiceAccount
   name: argocd-server              # Reference to the ServiceAccount above
