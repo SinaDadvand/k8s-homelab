@@ -384,11 +384,23 @@ metadata:
     app.kubernetes.io/part-of: argocd
 type: Opaque
 data:
-  # Server secret key for JWT tokens
+  # Server secret key for JWT tokens (base64 encoded)
   server.secretkey: YWRtaW4xMjMtc2VjcmV0LWtleQ==
-  # Admin password hash (bcrypt of "admin123")
-  admin.password: JDJhJDEwJGJqaGlHb1lLVXhOYWJLZkhiRHYvLnVkR0pzNGJONHQ3SWJsWW0yYzBsLnhjSFFLS1RZNEU2
-  admin.passwordMtime: MjAyNC0wMS0wMVQwMDowMDowMFo=
+---
+# Initial Admin Secret - contains the initial admin password
+# ArgoCD will look for this secret to set the initial admin password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-initial-admin-secret
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-initial-admin-secret
+    app.kubernetes.io/part-of: argocd
+type: Opaque
+stringData:
+  # Initial admin password (plain text, will be automatically hashed)
+  password: admin123
 ---
 # ConfigMap for ArgoCD configuration
 apiVersion: v1

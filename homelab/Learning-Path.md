@@ -1922,15 +1922,14 @@ spec:
   selector:
     app.kubernetes.io/component: server
     app.kubernetes.io/name: argocd
-  ports:
-  - name: http                     # HTTP port for Web UI access
+  ports:  - name: http                     # HTTP port for Web UI access
     port: 80                       # Service port
     targetPort: 8080              # Container port
-    nodePort: 30005               # External access port
+    nodePort: 30001               # External access port
   - name: grpc                     # gRPC port for CLI access
     port: 443                      # Service port
     targetPort: 8083              # Container port
-    nodePort: 30006               # External access port for CLI
+    nodePort: 30002               # External access port for CLI
   type: NodePort                   # Expose service externally via NodePort
 ---
 # ArgoCD Repository Server Deployment - handles Git repository operations
@@ -2155,20 +2154,22 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 30
 ---
-# Secret containing initial admin password for ArgoCD
+# Main ArgoCD Secret - contains server configuration
 apiVersion: v1
 kind: Secret
 metadata:
-  name: argocd-initial-admin-secret
+  name: argocd-secret
   namespace: argocd
   labels:
     app.kubernetes.io/name: argocd-secret
     app.kubernetes.io/part-of: argocd
 type: Opaque
 data:
-  # Initial admin password: admin123 (base64 encoded)
-  # In production, use a strong password and change it after first login
-  password: YWRtaW4xMjM=
+  # Server secret key for JWT tokens
+  server.secretkey: YWRtaW4xMjMtc2VjcmV0LWtleQ==
+  # Admin password hash (bcrypt of "admin123")
+  admin.password: JDJhJDEwJGJqaGlHb1lLVXhOYWJLZkhiRHYvLnVkR0pzNGJONHQ3SWJsWW0yYzBsLnhjSFFLS1RZNEU2
+  admin.passwordMtime: MjAyNC0wMS0wMVQwMDowMDowMFo=
 ---
 # ConfigMap for ArgoCD configuration
 apiVersion: v1
@@ -3053,7 +3054,7 @@ kubectl get pods -w
 ```
 
 **Access ArgoCD UI:**
-1. Open browser to http://localhost:30005
+1. Open browser to http://localhost:30001
 2. Login with admin/admin123
 3. You should see both nginx-app and redis-app applications
 4. Click on each application to see the deployment details
