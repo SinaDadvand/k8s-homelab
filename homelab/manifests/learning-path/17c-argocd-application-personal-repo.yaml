@@ -1,0 +1,70 @@
+# ArgoCD Application - Example using your personal public Git repository
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: personal-repo-demo
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: personal-repo-demo
+spec:
+  # Project that this application belongs to
+  project: default
+  
+  # Source configuration - using your personal Git repository
+  source:
+    # Replace with your actual GitHub username and repository
+    # Example: https://github.com/yourusername/your-k8s-apps.git
+    repoURL: https://github.com/SinaDadvand/k8s-helm.git
+    targetRevision: HEAD
+    path: helm-exercise/files
+    helm:
+      valueFiles:
+      - values-staging.yaml
+
+  # Destination configuration - where to deploy the application
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: redis-demo
+  
+  # Sync policy - how ArgoCD should handle synchronization
+  syncPolicy:
+    # Automatically sync when differences are detected
+    automated:
+      prune: true        # Remove resources that are no longer defined
+      selfHeal: true     # Automatically fix drift from desired state
+    
+    # Options for sync behavior
+    syncOptions:
+    - CreateNamespace=true    # Create namespace if it doesn't exist
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+
+---
+# Alternative example for multi-tier application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: personal-multitier-demo
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: personal-multitier-demo
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/sinadogru/homelab.git
+    targetRevision: HEAD
+    path: gitops-apps/multi-tier-app
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: multitier-demo
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true

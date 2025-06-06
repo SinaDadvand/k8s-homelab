@@ -1,0 +1,185 @@
+# Blackbox Exporter ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blackbox-exporter-config
+data:
+  config.yml: |
+    modules:
+      http_2xx:
+        prober: http
+        timeout: 5s
+        http:
+          method: GET
+          path: /
+          valid_http_versions: [ " "]
+          valid_http_statuses: []  # Defaults to 2xx
+      tcp_connect:
+        prober: tcp
+        timeout: 5s
+---
+# ConfigMap for advanced app configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: advanced-app-config
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Advanced Patterns Demo</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; }
+            h1 { color: #326ce5; }
+            .config { background: #f5f5f5; padding: 20px; border-radius: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>Advanced Kubernetes Patterns</h1>
+        <p>This application demonstrates:</p>
+        <ul>
+            <li>Init containers for setup</li>
+            <li>Sidecar containers for monitoring</li>
+            <li>Advanced configuration management</li>
+        </ul>
+        <div class="config">
+            <p><strong>Pod Name:</strong> ${HOSTNAME}</p>
+            <p><strong>Application Version:</strong> 1.0.0</p>
+        </div>
+    </body>
+    </html>
+---
+# ConfigMap for nginx configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-advanced-config
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name localhost;
+        
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+        }
+        
+        location /health {
+            return 200 "OK\n";
+            add_header Content-Type text/plain;
+        }
+        
+        location /metrics {
+            proxy_pass http://localhost:9115/metrics;
+        }
+    }
+---
+# Test application with init container and sidecars
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-advanced-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-advanced-app
+  template:
+    metadata:
+      labels:
+        app: test-advanced-app
+    spec:
+      # Init container for setup tasks
+      initContainers:
+      - name: setup
+        image: busybox:latest
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Starting init container..."
+          echo "Checking dependencies..."
+          sleep 5
+          echo "Dependencies verified"
+          echo "Creating configuration files..."
+          echo "Init container completed successfully"
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared
+      containers:
+      # Main application container
+      - name: app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: app-config
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+        - name: shared-data
+          mountPath: /shared
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      # Sidecar container for monitoring
+      - name: monitoring-sidecar
+        image: prom/blackbox-exporter:latest
+        ports:
+        - containerPort: 9115
+        args:
+        - '--config.file=/etc/blackbox_exporter/config.yml'
+        - '--web.listen-address=:9115'
+        - '--web.telemetry-path=/metrics'
+        volumeMounts:
+        - name: blackbox-config
+          mountPath: /etc/blackbox_exporter/
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+      volumes:
+      - name: app-config
+        configMap:
+          name: advanced-app-config
+      - name: nginx-config
+        configMap:
+          name: nginx-advanced-config
+      - name: blackbox-config
+        configMap:
+          name: blackbox-exporter-config
+      - name: shared-data
+        emptyDir: {}
+---
+# Service for the advanced app
+apiVersion: v1
+kind: Service
+metadata:
+  name: advanced-app-service
+spec:
+  selector:
+    app: test-advanced-app
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30008
+  - name: metrics
+    port: 9115
+    targetPort: 9115
+  type: NodePort

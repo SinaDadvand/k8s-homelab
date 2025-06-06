@@ -1,0 +1,59 @@
+# ConfigMap containing Redis configuration
+# This demonstrates how Redis can be configured through ConfigMaps
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: default
+  labels:
+    app: gitops-redis
+    managed-by: argocd
+data:
+  # Redis configuration file
+  redis.conf: |
+    # Redis configuration for GitOps demo
+    # Network and security settings
+    bind 0.0.0.0                    # Listen on all interfaces (container-safe)
+    port 6379                       # Default Redis port
+    timeout 0                       # Client idle timeout (0 = no timeout)
+    
+    # Memory management
+    maxmemory 128mb                 # Maximum memory usage
+    maxmemory-policy allkeys-lru    # Eviction policy when memory limit reached
+    
+    # Persistence settings (disabled for learning environment)
+    save ""                         # Disable RDB snapshots
+    appendonly no                   # Disable AOF persistence
+    
+    # Logging
+    loglevel notice                 # Log level
+    logfile ""                      # Log to stdout
+    
+    # Performance tuning
+    tcp-keepalive 300               # TCP keepalive
+    tcp-backlog 511                 # TCP backlog queue size
+    
+    # Client management
+    maxclients 10000                # Maximum number of clients
+    
+    # Slow log configuration
+    slowlog-log-slower-than 10000   # Log queries slower than 10ms
+    slowlog-max-len 128             # Maximum slow log entries
+    
+    # Client output buffer limits
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+  
+  # Health check script
+  health-check.sh: |
+    #!/bin/bash
+    # Simple Redis health check script
+    redis-cli ping | grep -q PONG
+    if [ $? -eq 0 ]; then
+      echo "Redis is healthy"
+      exit 0
+    else
+      echo "Redis is not responding"
+      exit 1
+    fi

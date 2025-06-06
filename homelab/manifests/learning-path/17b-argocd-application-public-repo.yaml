@@ -1,0 +1,36 @@
+# ArgoCD Application - Example using public Git repository (ArgoCD examples)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: public-repo-demo
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: public-repo-demo
+spec:
+  # Project that this application belongs to
+  project: default
+  
+  # Source configuration - using ArgoCD's public example repository
+  source:
+    # Public Git repository with example applications
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: guestbook
+  
+  # Destination configuration - where to deploy the application
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: guestbook
+  
+  # Sync policy - how ArgoCD should handle synchronization
+  syncPolicy:
+    # Automatically sync when differences are detected
+    automated:
+      prune: true        # Remove resources that are no longer defined
+      selfHeal: true     # Automatically fix drift from desired state
+    
+    # Options for sync behavior
+    syncOptions:
+    - CreateNamespace=true    # Create namespace if it doesn't exist
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true

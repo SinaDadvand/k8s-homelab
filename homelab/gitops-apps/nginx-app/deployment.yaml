@@ -1,0 +1,80 @@
+# GitOps-managed Nginx application deployment
+# This file represents the desired state for our web application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitops-nginx                 # Unique name for GitOps-managed nginx
+  namespace: default
+  labels:
+    app: gitops-nginx
+    managed-by: argocd               # Label indicating GitOps management
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/component: web-server
+    app.kubernetes.io/part-of: gitops-demo
+spec:
+  replicas: 2                        # Start with 2 replicas (can be modified later)
+  selector:
+    matchLabels:
+      app: gitops-nginx
+  template:
+    metadata:
+      labels:
+        app: gitops-nginx
+        version: "1.21"              # Version label for tracking
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21            # Specific version for predictable deployments
+        ports:
+        - containerPort: 80
+          name: http
+        # Resource limits for predictable performance
+        resources:
+          requests:
+            memory: "64Mi"           # Minimum memory allocation
+            cpu: "50m"               # Minimum CPU allocation
+          limits:
+            memory: "128Mi"          # Maximum memory allocation
+            cpu: "100m"              # Maximum CPU allocation
+        # Health checks to ensure container is ready
+        readinessProbe:
+          httpGet:
+            path: /                  # Check root path
+            port: 80
+          initialDelaySeconds: 5     # Wait 5 seconds before first check
+          periodSeconds: 10          # Check every 10 seconds
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 15    # Wait 15 seconds before first check
+          periodSeconds: 30          # Check every 30 seconds
+        # Volume mount for custom configuration
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /usr/share/nginx/html
+          readOnly: true
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-html           # Reference to ConfigMap (created below)
+          defaultMode: 0644          # File permissions
+---
+# Service to expose the GitOps-managed Nginx application
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitops-nginx-service
+  namespace: default
+  labels:
+    app: gitops-nginx
+    managed-by: argocd
+spec:
+  selector:
+    app: gitops-nginx              # Select pods with this label
+  ports:
+  - name: http
+    port: 80                       # Service port
+    targetPort: 80                 # Container port
+    nodePort: 30007               # External access port
+  type: NodePort                   # Expose externally for testing

@@ -1,0 +1,38 @@
+
+# ArgoCD Application - tells ArgoCD how to manage our GitOps demo app
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: local-nginx-demo
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: local-nginx-demo
+spec:
+  # Project that this application belongs to
+  project: default
+    # Source configuration - where to find the application manifests
+  source:
+    # Using local gitops-apps directory for in-cluster learning
+    repoURL: https://github.com/sinadogru/homelab.git
+    targetRevision: HEAD
+    path: gitops-apps/nginx-app
+  
+  # Destination configuration - where to deploy the application
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nginx-demo
+  
+  # Sync policy - how ArgoCD should handle synchronization
+  syncPolicy:
+    # Automatically sync when differences are detected
+    automated:
+      prune: true        # Remove resources that are no longer defined
+      selfHeal: true     # Automatically fix drift from desired state
+    
+    # Options for sync behavior
+    syncOptions:
+    - CreateNamespace=true    # Create namespace if it doesn't exist
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+
+

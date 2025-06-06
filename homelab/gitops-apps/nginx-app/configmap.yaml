@@ -1,0 +1,103 @@
+# ConfigMap containing custom HTML content for the nginx application
+# This demonstrates how configuration is managed separately from the application code
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-html
+  namespace: default
+  labels:
+    app: gitops-nginx
+    managed-by: argocd
+data:
+  # Custom HTML content that can be updated independently
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>GitOps Demo with ArgoCD</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                text-align: center;
+                padding: 50px;
+            }
+            .container {
+                background: rgba(255,255,255,0.1);
+                padding: 30px;
+                border-radius: 10px;
+                display: inline-block;
+            }
+            .version { 
+                background: #28a745; 
+                padding: 5px 15px; 
+                border-radius: 20px; 
+                display: inline-block;
+                margin: 10px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🚀 Hello from GitOps!</h1>
+            <div class="version">Version: 1.0.0</div>
+            <p>This application is managed by ArgoCD</p>
+            <p>Deployed from Git repository</p>
+            <p>Pod Name: <code id="hostname">Loading...</code></p>
+            <p>Deployment managed declaratively via GitOps principles</p>
+            
+            <h3>GitOps Benefits:</h3>
+            <ul style="text-align: left; display: inline-block;">
+                <li>🔄 Automatic synchronization from Git</li>
+                <li>📝 Declarative configuration management</li>
+                <li>🔍 Version control and audit trail</li>
+                <li>🔄 Easy rollbacks and updates</li>
+                <li>👥 Collaboration through Pull Requests</li>
+            </ul>
+        </div>
+        
+        <script>
+            // Display the hostname (pod name) if available
+            fetch('/hostname').then(r => r.text()).then(hostname => {
+                document.getElementById('hostname').textContent = hostname;
+            }).catch(() => {
+                document.getElementById('hostname').textContent = window.location.hostname;
+            });
+        </script>
+    </body>
+    </html>
+  
+  # Additional configuration files can be added here
+  nginx.conf: |
+    # Custom nginx configuration
+    server {
+        listen 80;
+        server_name localhost;
+        
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ =404;
+        }
+        
+        # Endpoint to return hostname (pod name)
+        location /hostname {
+            return 200 $hostname;
+            add_header Content-Type text/plain;
+        }
+        
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+        
+        # Basic security headers
+        add_header X-Content-Type-Options nosniff;
+        add_header X-Frame-Options DENY;
+        add_header X-XSS-Protection "1; mode=block";
+    }

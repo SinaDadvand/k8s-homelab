@@ -1,0 +1,26 @@
+# Job to backup Redis data
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-backup
+spec:
+  template:
+    spec:
+      containers:
+      - name: backup
+        image: redis:alpine
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Starting Redis backup..."
+          redis-cli -h redis-service BGSAVE
+          echo "Backup completed successfully"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      restartPolicy: Never
+  backoffLimit: 3

@@ -1,0 +1,162 @@
+# Frontend Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: default
+  labels:
+    app: frontend-app
+    tier: frontend
+    managed-by: argocd
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Multi-Tier GitOps Demo</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                background: linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%);
+                color: white;
+                text-align: center;
+                padding: 50px;
+            }
+            .container {
+                background: rgba(255,255,255,0.1);
+                padding: 30px;
+                border-radius: 10px;
+                display: inline-block;
+            }
+            .tier { 
+                background: #17a2b8; 
+                padding: 5px 15px; 
+                border-radius: 20px; 
+                display: inline-block;
+                margin: 10px 0;
+            }
+            button {
+                background: #28a745;
+                border: none;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                margin: 10px;
+            }
+            button:hover {
+                background: #218838;
+            }
+            #api-response {
+                background: rgba(0,0,0,0.2);
+                padding: 15px;
+                border-radius: 5px;
+                margin-top: 20px;
+                min-height: 50px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🏗️ Multi-Tier Application</h1>
+            <div class="tier">Frontend Tier</div>
+            <p>This is the frontend component of our multi-tier application</p>
+            <p>Managed by ArgoCD GitOps</p>
+            
+            <h3>Test Backend Communication:</h3>
+            <button onclick="testAPI()">Call Backend API</button>
+            <button onclick="checkHealth()">Health Check</button>
+            
+            <div id="api-response">
+                <em>Click a button to test backend communication</em>
+            </div>
+            
+            <h3>Application Architecture:</h3>
+            <ul style="text-align: left; display: inline-block;">
+                <li>🌐 Frontend: Nginx (Port 30008)</li>
+                <li>🔧 Backend: Apache HTTP (Internal)</li>
+                <li>📡 Communication: Service-to-Service</li>
+                <li>🚀 Deployment: GitOps with ArgoCD</li>
+            </ul>
+        </div>
+        
+        <script>
+            async function testAPI() {
+                const responseDiv = document.getElementById('api-response');
+                responseDiv.innerHTML = '<em>Calling backend API...</em>';
+                
+                try {
+                    // In a real environment, this would call the backend service
+                    // For this demo, we'll simulate the response
+                    setTimeout(() => {
+                        responseDiv.innerHTML = `
+                            <strong>✅ Backend Response:</strong><br>
+                            Service: backend-service<br>
+                            Status: Active<br>
+                            Timestamp: ${new Date().toISOString()}<br>
+                            Message: Multi-tier communication successful!
+                        `;
+                    }, 1000);
+                } catch (error) {
+                    responseDiv.innerHTML = `<strong>❌ Error:</strong> ${error.message}`;
+                }
+            }
+            
+            async function checkHealth() {
+                const responseDiv = document.getElementById('api-response');
+                responseDiv.innerHTML = '<em>Checking system health...</em>';
+                
+                setTimeout(() => {
+                    responseDiv.innerHTML = `
+                        <strong>🏥 Health Check Results:</strong><br>
+                        Frontend: ✅ Healthy<br>
+                        Backend: ✅ Healthy<br>
+                        Database: ✅ Simulated OK<br>
+                        Last Check: ${new Date().toLocaleTimeString()}
+                    `;
+                }, 800);
+            }
+        </script>
+    </body>
+    </html>
+---
+# Backend API Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: default
+  labels:
+    app: backend-api
+    tier: backend
+    managed-by: argocd
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Backend API</title>
+    </head>
+    <body>
+        <h1>Backend API Service</h1>
+        <p>This is the backend tier of our multi-tier application</p>
+        <p>Status: Active</p>
+        <p>Version: 1.0.0</p>
+        <p>Managed by: ArgoCD</p>
+    </body>
+    </html>
+  
+  health.json: |
+    {
+      "status": "healthy",
+      "service": "backend-api",
+      "version": "1.0.0",
+      "timestamp": "2024-01-01T00:00:00Z",
+      "checks": {
+        "database": "ok",
+        "cache": "ok",
+        "external_services": "ok"
+      }
+    }

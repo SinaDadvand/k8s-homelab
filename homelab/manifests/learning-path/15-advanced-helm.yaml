@@ -1,0 +1,248 @@
+# One-time Job for data processing
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-processing-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: processor
+        image: postgres:15
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Starting data processing job..."
+          echo "Job started at: $(date)"
+          
+          # Connect to database and process data
+          until pg_isready -h postgres-service -p 5432; do
+            echo "Waiting for database..."
+            sleep 5
+          done
+          
+          echo "Processing user data..."
+          psql -h postgres-service -U admin -d homelab -c "
+            CREATE TABLE IF NOT EXISTS user_stats (
+              id SERIAL PRIMARY KEY,
+              total_users INTEGER,
+              active_users INTEGER,
+              processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            INSERT INTO user_stats (total_users, active_users)
+            SELECT COUNT(*), COUNT(*) * 0.8 FROM users;
+          "
+          
+          echo "Processing completed at: $(date)"
+          echo "Data processing job finished successfully!"
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared
+      
+      restartPolicy: Never
+  backoffLimit: 3
+  activeDeadlineSeconds: 300  # 5 minutes timeout
+---
+# Parallel Job for batch processing
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: parallel-batch-job
+spec:
+  parallelism: 4      # Run 4 pods in parallel
+  completions: 12     # Need 12 successful completions
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: busybox:latest
+        command: ['sh', '-c']
+        args:
+        - |
+          worker_id="${HOSTNAME##*-}"
+          echo "Worker $worker_id started at $(date)"
+          
+          # Simulate batch processing
+          batch_size=$((RANDOM % 50 + 10))
+          echo "Processing batch of $batch_size items..."
+          
+          for i in $(seq 1 $batch_size); do
+            echo "Processing item $i/$batch_size"
+            sleep 0.1
+          done
+          
+          # Simulate some failures occasionally
+          if [ $((RANDOM % 10)) -eq 0 ]; then
+            echo "Worker $worker_id failed!"
+            exit 1
+          fi
+          
+          echo "Worker $worker_id completed successfully at $(date)"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      restartPolicy: Never
+  backoffLimit: 6
+---
+# CronJob for regular database backup
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-backup
+spec:
+  schedule: "*/3 * * * *"  # Every 3 minutes for demo (use "0 2 * * *" for daily at 2 AM)
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: postgres:15
+            command: ['sh', '-c']
+            args:
+            - |
+              echo "Starting database backup at $(date)"
+              backup_file="backup-$(date +%Y%m%d-%H%M%S).sql"
+              
+              # Wait for database
+              until pg_isready -h postgres-service -p 5432; do
+                echo "Waiting for database..."
+                sleep 5
+              done
+              
+              # Create backup
+              echo "Creating backup: $backup_file"
+              pg_dump -h postgres-service -U admin homelab > /backups/$backup_file
+              
+              # Verify backup
+              if [ -f "/backups/$backup_file" ]; then
+                backup_size=$(stat -c%s "/backups/$backup_file")
+                echo "Backup created successfully: $backup_file ($backup_size bytes)"
+                
+                # Keep only last 5 backups
+                cd /backups && ls -t backup-*.sql | tail -n +6 | xargs -r rm
+                echo "Old backups cleaned up"
+              else
+                echo "Backup failed!"
+                exit 1
+              fi
+              
+              echo "Backup completed at $(date)"
+            env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "500m"
+          volumes:
+          - name: backup-storage
+            emptyDir: {}
+          restartPolicy: OnFailure
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+---
+# CronJob for log cleanup
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: log-cleanup
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cleanup
+            image: busybox:latest
+            command: ['sh', '-c']
+            args:
+            - |
+              echo "Starting log cleanup at $(date)"
+              
+              # Simulate log cleanup
+              echo "Cleaning application logs older than 7 days..."
+              find /logs -name "*.log" -type f -mtime +7 -exec rm {} \; 2>/dev/null || true
+              
+              echo "Cleaning temp files..."
+              find /tmp -name "temp_*" -type f -mtime +1 -exec rm {} \; 2>/dev/null || true
+              
+              # Clean up old backups (if any)
+              echo "Cleaning old backup files..."
+              find /backups -name "backup-*.sql" -type f -mtime +30 -exec rm {} \; 2>/dev/null || true
+              
+              echo "Log cleanup completed at $(date)"
+            volumeMounts:
+            - name: log-storage
+              mountPath: /logs
+            - name: backup-storage
+              mountPath: /backups
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "50m"
+              limits:
+                memory: "128Mi"
+                cpu: "100m"
+          volumes:
+          - name: log-storage
+            emptyDir: {}
+          - name: backup-storage
+            emptyDir: {}
+          restartPolicy: OnFailure
+  suspend: false  # Set to true to suspend the cron job
+---
+# CronJob for metrics collection
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: metrics-collection
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: metrics-collector
+            image: prom/blackbox-exporter:latest
+            args:
+            - '--config.file=/etc/blackbox_exporter/config.yml'
+            - '--web.listen-address=:9115'
+            - '--web.telemetry-path=/metrics'
+            volumeMounts:
+            - name: config
+              mountPath: /etc/blackbox_exporter/
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "50m"
+              limits:
+                memory: "128Mi"
+                cpu: "100m"
+          volumes:
+          - name: config
+            configMap:
+              name: blackbox-exporter-config
+          restartPolicy: OnFailure

@@ -1,0 +1,91 @@
+# GitOps-managed Redis deployment for caching and session storage
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitops-redis
+  namespace: default
+  labels:
+    app: gitops-redis
+    managed-by: argocd
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: gitops-demo
+spec:
+  replicas: 1                        # Redis typically runs as single instance
+  selector:
+    matchLabels:
+      app: gitops-redis
+  template:
+    metadata:
+      labels:
+        app: gitops-redis
+        version: "7-alpine"          # Version label for tracking
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine        # Lightweight Redis image
+        ports:
+        - containerPort: 6379
+          name: redis
+        # Redis configuration via arguments
+        args:
+        - redis-server               # Start Redis server
+        - --save                     # Disable RDB persistence for learning
+        - ""
+        - --appendonly              # Disable AOF persistence for learning
+        - "no"
+        - --maxmemory               # Set memory limit
+        - "128mb"
+        - --maxmemory-policy        # Memory eviction policy
+        - "allkeys-lru"
+        # Resource limits for predictable performance
+        resources:
+          requests:
+            memory: "64Mi"           # Minimum memory allocation
+            cpu: "50m"               # Minimum CPU allocation
+          limits:
+            memory: "128Mi"          # Maximum memory allocation
+            cpu: "200m"              # Maximum CPU allocation
+        # Health checks for Redis
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5     # Wait 5 seconds before first check
+          periodSeconds: 10          # Check every 10 seconds
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 15    # Wait 15 seconds before first check
+          periodSeconds: 30          # Check every 30 seconds
+        # Volume mount for configuration (optional)
+        volumeMounts:
+        - name: redis-config
+          mountPath: /usr/local/etc/redis
+          readOnly: true
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config         # Reference to ConfigMap (created below)
+          defaultMode: 0644          # File permissions
+---
+# Service to expose the GitOps-managed Redis application
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitops-redis-service
+  namespace: default
+  labels:
+    app: gitops-redis
+    managed-by: argocd
+spec:
+  selector:
+    app: gitops-redis              # Select pods with this label
+  ports:
+  - name: redis
+    port: 6379                     # Service port
+    targetPort: 6379              # Container port
+  type: ClusterIP                  # Internal service only (Redis shouldn't be exposed externally)
