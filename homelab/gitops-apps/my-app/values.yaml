@@ -1,0 +1,23 @@
+namespace: 
+  name: demo
+
+service:
+  name: demo-service
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+image:
+  repository: nginx
+  tag: alpine
+  pullPolicy: IfNotPresent
+
+replicaCount: 3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+configmap:
+  data: "version:nginx"

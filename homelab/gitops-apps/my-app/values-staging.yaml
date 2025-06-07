@@ -1,0 +1,23 @@
+namespace: 
+  name: staging
+
+service:
+  name: demo-service
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+image:
+  repository: nginx
+  tag: 1.18.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 256Mi
+
+configmap:
+  data: "version: 1.18.0"

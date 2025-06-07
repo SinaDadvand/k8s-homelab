@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx
+    tag: alpine
+  name: my-app-deployment
+  namespace: {{.Values.namespace.name}}
+spec:
+  replicas: {{.Values.replicaCount}}
+  selector:
+    matchLabels:
+      app: nginx-my-app
+      tag: alpine
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: nginx-my-app
+        tag: alpine
+    spec:
+      containers:
+      - image: {{.Values.image.repository}}:{{.Values.image.tag}}
+        imagePullPolicy: {{.Values.image.pullPolicy}}
+        name: my-app-container
+        ports:
+        - containerPort: 80 #{{.Values.containerPort}}
+        # Volume mounts define where to mount the ConfigMap data inside the container
+        volumeMounts:
+        # Mount the custom nginx.conf file to replace the default configuration
+        - name: nginx-config-volume
+          mountPath: /etc/nginx/nginx.conf    # Destination path in container
+          subPath: nginx.conf                 # Specific key from ConfigMap
+        # Mount the custom HTML file to replace the default nginx page
+        - name: html-volume
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
+        env:
+        # Get the pod name and make it available as HOSTNAME environment variable
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name        # Reference to pod metadata        
+        resources:
+          requests:
+            cpu: {{.Values.resources.requests.cpu}}
+            memory: {{.Values.resources.requests.memory}}
+      # Volumes section defines the data sources to mount
+      volumes:
+      # Volume sourced from our nginx-config ConfigMap
+      - name: nginx-config-volume
+        configMap:
+          name: my-app-config                  # Must match the ConfigMap name
+      # Same ConfigMap used for HTML content (demonstrates reuse)
+      - name: html-volume
+        configMap:
+          name: my-app-config
+
