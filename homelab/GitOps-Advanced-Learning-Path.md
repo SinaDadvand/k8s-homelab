@@ -1576,9 +1576,9 @@ spec:
             memory: "128Mi"
             cpu: "100m"
       volumes:
-      - name: config
-        configMap:
-          name: monitoring-config
+        - name: config
+          configMap:
+            name: monitoring-config
 ---
 apiVersion: v1
 kind: Service
@@ -1819,3 +1819,90 @@ By completing this advanced GitOps learning path, you have learned:
 ---
 
 **Happy Learning and Best of Luck on Your Advanced Kubernetes GitOps Journey!** 🚀
+
+### **⚠️ Common Issues and Troubleshooting for Steps 23-24**
+
+**Important Note**: When following Steps 23 and 24, you may encounter several common issues related to Helm template values and nginx configuration. Here's how to identify and fix them:
+
+#### **Issue 1: Missing Helm Template Values**
+
+**Symptoms:**
+- ArgoCD sync fails with template errors
+- Error messages like: `nil pointer evaluating interface {}.create`
+- Templates for `serviceaccount.yaml` or `hpa.yaml` fail to render
+
+**Cause**: Custom `values.yaml` missing required sections for auto-generated Helm templates
+
+**Fix**: Add missing values sections to `helm-charts/multi-env-app/values.yaml`:
+```yaml
+# Add these sections to your values.yaml
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+```
+
+**Troubleshooting Commands:**
+```powershell
+# Test Helm template rendering locally
+helm template staging helm-charts/multi-env-app -f helm-charts/multi-env-app/values-staging.yaml --debug
+
+# Check for missing values
+helm lint helm-charts/multi-env-app
+```
+
+#### **Issue 2: nginx Permission Errors (CrashLoopBackOff)**
+
+**Symptoms:**
+- Pods in `CrashLoopBackOff` state
+- Container logs show: `Permission denied` for `/var/cache/nginx/client_temp`
+- Warning: `"user" directive makes sense only if the master process runs with super-user privileges`
+
+**Cause**: Security context `runAsUser` conflicts with nginx's directory permissions
+
+**Fix**: Create custom nginx configuration using writable temp directories:
+
+**Create:** `helm-charts/multi-env-app/templates/nginx-config.yaml`
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "multi-env-app.fullname" . }}-nginx-config
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /tmp/nginx.pid;
+    
+    events {
+        worker_connections 1024;
+    }
+    
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        
+        # Use /tmp for temp directories (writable by any user)
+        client_body_temp_path /tmp/client_temp;
+        proxy_temp_path /tmp/proxy_temp;
+        fastcgi_temp_path /tmp/fastcgi_temp;
+        uwsgi_temp_path /tmp/uwsgi_temp;
+        scgi_temp_path /tmp/scgi_temp;
+        
+        sendfile on;
+        keepalive_timeout 65;
+        
+        include /etc/nginx/conf.d/*.conf;
+    }
+```
