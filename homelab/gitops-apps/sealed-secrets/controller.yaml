@@ -1,0 +1,261 @@
+# Sealed Secrets Controller deployment
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sealed-secrets-system
+  labels:
+    name: sealed-secrets-system
+    managed-by: argocd
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sealed-secrets-controller
+  namespace: sealed-secrets-system
+  labels:
+    app.kubernetes.io/name: sealed-secrets-controller
+    app.kubernetes.io/version: v0.24.0
+spec:
+  minReadySeconds: 30
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sealed-secrets-controller
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sealed-secrets-controller
+        app.kubernetes.io/version: v0.24.0
+    spec:
+      containers:
+      - args:
+        - --update-status
+        - --rotation-period=720h
+        - --key-prefix=sealed-secrets-key
+        command:
+        - controller
+        env:
+        - name: SEALED_SECRETS_UPDATE_STATUS
+          value: "true"
+        image: docker.io/bitnami/sealed-secrets-controller:v0.24.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        name: sealed-secrets-controller
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 8081
+          name: metrics
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1001
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+      securityContext:
+        fsGroup: 65534
+      serviceAccountName: sealed-secrets-controller
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: tmp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sealed-secrets-controller
+  namespace: sealed-secrets-system
+  labels:
+    app.kubernetes.io/name: sealed-secrets-controller
+spec:
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: http
+  - name: metrics
+    port: 8081
+    protocol: TCP
+    targetPort: metrics
+  selector:
+    app.kubernetes.io/name: sealed-secrets-controller
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sealed-secrets-controller
+  namespace: sealed-secrets-system
+  labels:
+    app.kubernetes.io/name: sealed-secrets-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sealed-secrets-controller
+  labels:
+    app.kubernetes.io/name: sealed-secrets-controller
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - update
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - bitnami.com
+  resources:
+  - sealedsecrets
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - bitnami.com
+  resources:
+  - sealedsecrets/status
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sealed-secrets-controller
+  labels:
+    app.kubernetes.io/name: sealed-secrets-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sealed-secrets-controller
+subjects:
+- kind: ServiceAccount
+  name: sealed-secrets-controller
+  namespace: sealed-secrets-system
+---
+# Custom Resource Definition for SealedSecrets
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: sealedsecrets.bitnami.com
+  labels:
+    app.kubernetes.io/name: sealed-secrets-controller
+spec:
+  group: bitnami.com
+  names:
+    kind: SealedSecret
+    listKind: SealedSecretList
+    plural: sealedsecrets
+    singular: sealedsecret
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              encryptedData:
+                type: object
+                additionalProperties:
+                  type: string
+              template:
+                type: object
+                properties:
+                  metadata:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      labels:
+                        type: object
+                        additionalProperties:
+                          type: string
+                      annotations:
+                        type: object
+                        additionalProperties:
+                          type: string
+                  type:
+                    type: string
+          status:
+            type: object
+            properties:
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastUpdateTime:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
