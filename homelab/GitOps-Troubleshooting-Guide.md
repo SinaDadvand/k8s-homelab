@@ -431,6 +431,105 @@ argocd app sync <app-name> --force
 
 ---
 
+### Issue #10: ArgoCD Application YAML Validation Errors
+**Step:** 28 (Production App Deployment)  
+**Symptoms:**
+- Error: `Application in version "v1alpha1" cannot be handled as a Application: strict decoding error: unknown field "spec.health"`
+- ArgoCD Application fails to deploy with YAML validation errors
+- kubectl apply returns BadRequest errors
+
+**Root Cause:** Invalid ArgoCD Application specification with unsupported fields
+
+**Multiple Issues Found:**
+1. **Invalid `health` field**: ArgoCD Applications don't support `spec.health` - health checks are configured at the cluster level
+2. **Duplicate `syncOptions`**: Multiple `syncOptions` sections in the same spec
+3. **Invalid sync wave syntax**: Incorrect placement of SyncWave annotations
+
+**Solution:**
+```yaml
+# ❌ INVALID: Don't include health checks in Application spec
+spec:
+  health:
+    - group: bitnami.com
+      kind: SealedSecret
+      check: |
+        # This is not supported in Application spec
+
+# ❌ INVALID: Duplicate syncOptions
+syncPolicy:
+  syncOptions:
+  - CreateNamespace=true
+  syncOptions:  # This is a duplicate
+  - SyncWave=0
+
+# ✅ VALID: Clean Application spec
+spec:
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+```
+
+**Health Checks Configuration:**
+Health checks for custom resources should be configured at the ArgoCD ConfigMap level, not in individual applications:
+
+```yaml
+# Configure in argocd-cm ConfigMap instead
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  resource.customizations.health.bitnami.com_SealedSecret: |
+    hs = {}
+    if obj.status ~= nil and obj.status.conditions ~= nil then
+      for i, condition in ipairs(obj.status.conditions) do
+        if condition.type == "Synced" and condition.status == "True" then
+          hs.status = "Healthy"
+          hs.message = "SealedSecret is synced"
+          return hs
+        end
+      end
+    end
+    hs.status = "Progressing"
+    hs.message = "SealedSecret is being processed"
+    return hs
+```
+
+**Troubleshooting Commands:**
+```powershell
+# Validate YAML syntax
+kubectl apply --dry-run=client -f argocd-applications/security-apps/production-app.yaml
+
+# Check ArgoCD Application CRD for supported fields
+kubectl explain application.spec
+
+# View ArgoCD Application status
+kubectl describe application production-app-sealed-secrets -n argocd
+
+# Check ArgoCD controller logs for validation errors
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller --tail=50
+```
+
+**Prevention:**
+- Always validate ArgoCD Application YAML against the CRD schema
+- Use `kubectl apply --dry-run=client` before applying
+- Check ArgoCD documentation for supported Application spec fields
+- Configure health checks at the ArgoCD level, not per-application
+
+---
+
 ## 🛠️ General Troubleshooting Commands
 
 ### ArgoCD Diagnostics
