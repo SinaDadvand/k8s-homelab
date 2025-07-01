@@ -424,14 +424,15 @@ winget install Bitnami.SealedSecrets
 
 **Fetch the Public Key:**
 ```powershell
-# Get the public key from the Sealed Secrets controller
-kubeseal --fetch-cert --controller-name=sealed-secrets-controller --controller-namespace=sealed-secrets-system > sealed-secrets-public.pem
+# Get the public key from the Sealed Secrets controller using cmd to avoid encoding issues
+cmd /c "kubeseal --fetch-cert --controller-name=sealed-secrets-controller --controller-namespace=sealed-secrets-system > sealed-secrets-public.pem"
 
 # Verify the public key was fetched
-Get-Content sealed-secrets-public.pem
+Get-Content sealed-secrets-public.pem | Select-Object -First 5
 
 Write-Host "✅ Public key fetched and saved to sealed-secrets-public.pem"
 Write-Host "📝 This public key can be shared and used to encrypt secrets"
+Write-Host "💡 Using cmd instead of PowerShell avoids UTF-16 encoding issues"
 ```
 
 **Create Regular Secrets First:**
@@ -474,21 +475,37 @@ data:
 # Create the sealed secrets directory
 New-Item -ItemType Directory -Path "secrets\sealed" -Force
 
-# Encrypt the database secret
-kubeseal --format=yaml --cert=sealed-secrets-public.pem < secrets/templates/database-secret.yaml > secrets/sealed/database-secret-sealed.yaml
+# Important: Use cmd instead of PowerShell to avoid encoding issues
+# Encrypt the database secret using cmd
+cmd /c "kubeseal --format=yaml --cert=sealed-secrets-public.pem --secret-file=secrets/templates/database-secret.yaml --sealed-secret-file=secrets/sealed/database-secret-sealed.yaml"
 
-# Encrypt the API keys secret
-kubeseal --format=yaml --cert=sealed-secrets-public.pem < secrets/templates/api-keys-secret.yaml > secrets/sealed/api-keys-sealed.yaml
+# Encrypt the API keys secret using cmd
+cmd /c "kubeseal --format=yaml --cert=sealed-secrets-public.pem --secret-file=secrets/templates/api-keys-secret.yaml --sealed-secret-file=secrets/sealed/api-keys-sealed.yaml"
 
-# Verify the encrypted secrets
+# Verify the encrypted secrets were created
 Write-Host "📁 Database Secret (Sealed):"
-Get-Content secrets/sealed/database-secret-sealed.yaml | Select-Object -First 20
+Get-Content secrets/sealed/database-secret-sealed.yaml | Select-Object -First 10
 
 Write-Host "`n📁 API Keys Secret (Sealed):"
-Get-Content secrets/sealed/api-keys-sealed.yaml | Select-Object -First 20
+Get-Content secrets/sealed/api-keys-sealed.yaml | Select-Object -First 10
 
 Write-Host "`n✅ Secrets encrypted successfully!"
 Write-Host "🔒 These encrypted secrets are safe to commit to Git"
+Write-Host "💡 Used cmd to avoid PowerShell encoding issues with kubeseal"
+```
+
+**Common Issues and Solutions:**
+```powershell
+# ❌ AVOID: PowerShell pipeline can cause encoding issues
+# Get-Content secrets/templates/database-secret.yaml | kubeseal --format=yaml --cert=sealed-secrets-public.pem > output.yaml
+
+# ✅ USE: cmd with direct file input/output
+# cmd /c "kubeseal --format=yaml --cert=sealed-secrets-public.pem --secret-file=input.yaml --sealed-secret-file=output.yaml"
+
+# If you encounter "error: data does not contain any valid RSA or ECDSA certificates":
+# 1. Verify you're in the correct directory: Get-Location
+# 2. Check certificate file exists: Test-Path "sealed-secrets-public.pem"
+# 3. Re-fetch certificate using cmd: cmd /c "kubeseal --fetch-cert ... > sealed-secrets-public.pem"
 ```
 
 **Create GitOps Application Structure for Secrets:**
@@ -1018,11 +1035,11 @@ data:
   database: cHJvZHVjdGlvbl9kYg==
 "@
 
-# Save to temporary file
+# Save to temporary file with UTF-8 encoding
 $newSecret | Out-File -FilePath "temp-secret.yaml" -Encoding UTF8
 
-# Encrypt the updated secret
-kubeseal --format=yaml --cert=sealed-secrets-public.pem < temp-secret.yaml > gitops-apps/production-app/database-secret-sealed.yaml
+# Encrypt the updated secret using cmd to avoid encoding issues
+cmd /c "kubeseal --format=yaml --cert=sealed-secrets-public.pem --secret-file=temp-secret.yaml --sealed-secret-file=gitops-apps/production-app/database-secret-sealed.yaml"
 
 # Clean up temporary file
 Remove-Item "temp-secret.yaml"
@@ -1035,6 +1052,7 @@ git push origin main
 # ArgoCD will automatically detect and sync the new secret
 Write-Host "🔄 Secret rotation initiated via GitOps"
 Write-Host "⏳ ArgoCD will automatically sync the updated secret"
+Write-Host "💡 Used cmd for encryption to ensure proper file handling"
 
 # Monitor the sync
 kubectl get application production-app-sealed-secrets -n argocd -w
@@ -2452,4 +2470,74 @@ In the upcoming steps, we'll explore:
 
 ---
 
-**Happy Learning!** 🚀 You now have comprehensive secret management with both Sealed Secrets and External Secrets Operator!
+### 🔧 Troubleshooting Sealed Secrets Encoding Issues
+
+**Problem:** `error: data does not contain any valid RSA or ECDSA certificates`
+
+**Root Cause Analysis:**
+- **PowerShell Encoding**: PowerShell's `Get-Content` and output redirection (`>`) can save files with UTF-16 BOM or other encoding
+- **Pipeline Issues**: Using PowerShell pipes (`|`) can change data encoding in transit
+- **File Operations**: Windows PowerShell default encoding differs from what kubeseal expects
+
+**Solution Steps:**
+```powershell
+# Step 1: Always check your current directory
+Get-Location
+# Should be in: gitops-argocd (or your repo root)
+
+# Step 2: Use cmd for certificate fetching
+cmd /c "kubeseal --fetch-cert --controller-name=sealed-secrets-controller --controller-namespace=sealed-secrets-system > sealed-secrets-public.pem"
+
+# Step 3: Verify certificate file content
+Get-Content "sealed-secrets-public.pem" | Select-Object -First 3 -Last 3
+# Should show: -----BEGIN CERTIFICATE----- and -----END CERTIFICATE-----
+
+# Step 4: Use cmd for encryption with explicit file flags
+cmd /c "kubeseal --format=yaml --cert=sealed-secrets-public.pem --secret-file=secrets/templates/database-secret.yaml --sealed-secret-file=secrets/sealed/database-secret-sealed.yaml"
+
+# Step 5: Verify sealed secret was created
+Test-Path "secrets/sealed/database-secret-sealed.yaml"
+Get-Content "secrets/sealed/database-secret-sealed.yaml" | Select-Object -First 5
+```
+
+**What NOT to Do:**
+```powershell
+# ❌ Avoid PowerShell redirection
+kubeseal --fetch-cert ... > certificate.pem
+
+# ❌ Avoid PowerShell pipes
+Get-Content input.yaml | kubeseal ... > output.yaml
+
+# ❌ Avoid mixing PowerShell and kubeseal for file operations
+$content = Get-Content input.yaml
+$content | kubeseal ...
+```
+
+**What TO Do:**
+```powershell
+# ✅ Use cmd for file operations
+cmd /c "kubeseal --fetch-cert ... > certificate.pem"
+
+# ✅ Use explicit file flags
+cmd /c "kubeseal --secret-file=input.yaml --sealed-secret-file=output.yaml ..."
+
+# ✅ Verify files exist before processing
+Test-Path "input.yaml" -and Test-Path "certificate.pem"
+```
+
+**Quick Diagnostic Commands:**
+```powershell
+# Check if Sealed Secrets controller is running
+kubectl get pods -n sealed-secrets-system
+
+# Test direct certificate fetch
+cmd /c "kubeseal --fetch-cert --controller-name=sealed-secrets-controller --controller-namespace=sealed-secrets-system"
+
+# Check kubeseal version
+kubeseal --version
+
+# Verify file encodings (if issues persist)
+Get-Content "sealed-secrets-public.pem" -Encoding UTF8 | Select-Object -First 5
+```
+
+---
