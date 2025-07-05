@@ -541,7 +541,7 @@ Get-ChildItem "gitops-apps\production-app\" -Recurse
 
 **Create:** `gitops-apps/production-app/deployment.yaml`
 ```yaml
-# Production application that uses sealed secrets
+# Production application that uses sealed secrets with Node.js demo
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -562,20 +562,34 @@ spec:
         version: v1.0.0
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "3000"
     spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 2000
+      initContainers:
+      - name: setup-app
+        image: node:18-alpine
+        command: ['sh', '-c']
+        args:
+        - |
+          cp /config/app.js /app/app.js
+          cp /config/package.json /app/package.json
+          cd /app && npm install
+          echo "App setup complete"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: app-dir
+          mountPath: /app
       containers:
       - name: app
-        image: nginx:1.24-alpine
+        image: node:18-alpine
+        command: ['node', '/app/app.js']
         ports:
-        - containerPort: 80
+        - containerPort: 3000
           name: http
-        - containerPort: 8080
-          name: metrics
         env:
         # Database connection using sealed secrets
         - name: DB_HOST
@@ -630,19 +644,18 @@ spec:
         - name: APP_VERSION
           value: "1.0.0"
         volumeMounts:
-        - name: config
-          mountPath: /usr/share/nginx/html/index.html
-          subPath: index.html
+        - name: app-dir
+          mountPath: /app
         livenessProbe:
           httpGet:
             path: /health
-            port: 80
+            port: 3000
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /ready
-            port: 80
+            port: 3000
           initialDelaySeconds: 5
           periodSeconds: 5
         resources:
@@ -656,6 +669,8 @@ spec:
       - name: config
         configMap:
           name: production-app-config
+      - name: app-dir
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -669,12 +684,9 @@ spec:
     app: production-app
   ports:
   - name: http
-    port: 80
-    targetPort: 80
+    port: 3000
+    targetPort: 3000
     nodePort: 30130
-  - name: metrics
-    port: 8080
-    targetPort: 8080
   type: NodePort
 ```
 
@@ -688,207 +700,422 @@ metadata:
   labels:
     app: production-app
 data:
-  index.html: |
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Production App - Sealed Secrets Demo</title>
-        <style>
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                margin: 0;
-                padding: 20px;
-                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-                color: white;
-                min-height: 100vh;
-            }
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-                background: rgba(255, 255, 255, 0.1);
-                padding: 40px;
-                border-radius: 15px;
-                backdrop-filter: blur(10px);
-                box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-            }
-            .header {
-                text-align: center;
-                margin-bottom: 40px;
-            }
-            .header h1 {
-                font-size: 3em;
-                margin-bottom: 10px;
-                background: linear-gradient(45deg, #fff, #f0f0f0);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
-            }
-            .security-badge {
-                display: inline-block;
-                padding: 10px 20px;
-                background: #27ae60;
-                border-radius: 25px;
-                font-weight: bold;
-                margin: 10px 5px;
-            }
-            .info-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-                gap: 20px;
-                margin-top: 30px;
-            }
-            .info-card {
-                background: rgba(0, 0, 0, 0.3);
-                padding: 25px;
-                border-radius: 15px;
-                border: 1px solid rgba(255, 255, 255, 0.2);
-            }
-            .info-card h3 {
-                color: #3498db;
-                margin-bottom: 15px;
-                font-size: 1.3em;
-            }
-            .secret-item {
-                margin: 10px 0;
-                padding: 10px;
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 8px;
-                border-left: 4px solid #e74c3c;
-            }
-            .secret-masked {
-                font-family: 'Courier New', monospace;
-                background: #2c3e50;
-                padding: 3px 8px;
-                border-radius: 4px;
-                color: #ecf0f1;
-            }
-            .status-indicator {
-                display: inline-block;
-                width: 12px;
-                height: 12px;
-                border-radius: 50%;
-                margin-right: 8px;
-            }
-            .status-ok { background: #2ecc71; }
-            .status-warning { background: #f39c12; }
-            .endpoints {
-                margin-top: 30px;
-                text-align: center;
-            }
-            .endpoints a {
-                color: #3498db;
-                text-decoration: none;
-                margin: 0 15px;
-                padding: 8px 16px;
-                border: 1px solid #3498db;
-                border-radius: 20px;
-                transition: all 0.3s;
-            }
-            .endpoints a:hover {
-                background: #3498db;
-                color: white;
-            }
-        </style>
-        <script>
-            function updateStatus() {
-                document.getElementById('timestamp').textContent = new Date().toLocaleString();
+  package.json: |
+    {
+      "name": "sealed-secrets-demo",
+      "version": "1.0.0",
+      "description": "Demo app to show decrypted sealed secrets",
+      "main": "app.js",
+      "dependencies": {
+        "express": "^4.18.2"
+      },
+      "scripts": {
+        "start": "node app.js"
+      }
+    }
+  app.js: |
+    const express = require('express');
+    const app = express();
+    const port = 3000;
+
+    // Middleware to parse JSON
+    app.use(express.json());
+
+    // Health check endpoint
+    app.get('/health', (req, res) => {
+      res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+    });
+
+    // Ready check endpoint
+    app.get('/ready', (req, res) => {
+      res.json({ status: 'ready', timestamp: new Date().toISOString() });
+    });
+
+    // Environment variables API endpoint
+    app.get('/api/env', (req, res) => {
+      // Filter environment variables to show sealed secrets
+      const envVars = {};
+      Object.keys(process.env).forEach(key => {
+        if (key.startsWith('DB_') || 
+            key.startsWith('STRIPE_') || 
+            key.startsWith('GITHUB_') || 
+            key.startsWith('SENDGRID_') || 
+            key.startsWith('JWT_') || 
+            key.startsWith('APP_')) {
+          envVars[key] = process.env[key];
+        }
+      });
+      res.json(envVars);
+    });
+
+    // Main page with environment variables display
+    app.get('/', (req, res) => {
+      const envVars = {};
+      Object.keys(process.env).forEach(key => {
+        if (key.startsWith('DB_') || 
+            key.startsWith('STRIPE_') || 
+            key.startsWith('GITHUB_') || 
+            key.startsWith('SENDGRID_') || 
+            key.startsWith('JWT_') || 
+            key.startsWith('APP_')) {
+          envVars[key] = process.env[key];
+        }
+      });
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Production App - Sealed Secrets Demo</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                    color: white;
+                    min-height: 100vh;
+                }
+                .container {
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background: rgba(255, 255, 255, 0.1);
+                    padding: 40px;
+                    border-radius: 15px;
+                    backdrop-filter: blur(10px);
+                    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+                }
+                .header {
+                    text-align: center;
+                    margin-bottom: 40px;
+                }
+                .header h1 {
+                    font-size: 3em;
+                    margin-bottom: 10px;
+                    background: linear-gradient(45deg, #fff, #f0f0f0);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                }
+                .security-badge {
+                    display: inline-block;
+                    padding: 10px 20px;
+                    background: #27ae60;
+                    border-radius: 25px;
+                    font-weight: bold;
+                    margin: 10px 5px;
+                }
+                .info-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+                    gap: 20px;
+                    margin-top: 30px;
+                }
+                .info-card {
+                    background: rgba(0, 0, 0, 0.3);
+                    padding: 25px;
+                    border-radius: 15px;
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                }
+                .info-card h3 {
+                    color: #3498db;
+                    margin-bottom: 15px;
+                    font-size: 1.3em;
+                }
+                .secret-item {
+                    margin: 10px 0;
+                    padding: 15px;
+                    background: rgba(0, 0, 0, 0.2);
+                    border-radius: 8px;
+                    border-left: 4px solid #2ecc71;
+                }
+                .secret-value {
+                    font-family: 'Courier New', monospace;
+                    background: #2c3e50;
+                    padding: 5px 10px;
+                    border-radius: 4px;
+                    color: #ecf0f1;
+                    word-break: break-all;
+                    margin-top: 5px;
+                }
+                .status-indicator {
+                    display: inline-block;
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    margin-right: 8px;
+                    background: #2ecc71;
+                }
+                .endpoints {
+                    margin-top: 30px;
+                    text-align: center;
+                }
+                .endpoints a {
+                    color: #3498db;
+                    text-decoration: none;
+                    margin: 0 15px;
+                    padding: 8px 16px;
+                    border: 1px solid #3498db;
+                    border-radius: 20px;
+                    transition: all 0.3s;
+                }
+                .endpoints a:hover {
+                    background: #3498db;
+                    color: white;
+                }
+                .refresh-btn {
+                    background: #3498db;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                    margin: 10px 0;
+                }
+                .refresh-btn:hover {
+                    background: #2980b9;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🔐 Production Application</h1>
+                    <p>Demonstrating Sealed Secrets Integration with GitOps</p>
+                    <div class="security-badge">🛡️ Sealed Secrets Enabled</div>
+                    <div class="security-badge">🔒 GitOps Secure</div>
+                    <div class="security-badge">🚀 Node.js Demo</div>
+                </div>
                 
-                // Simulate checking sealed secrets status
-                const secretsStatus = document.getElementById('secrets-status');
-                secretsStatus.innerHTML = '<span class="status-indicator status-ok"></span>All secrets decrypted successfully';
-                
-                // Update connection status
-                const dbStatus = document.getElementById('db-status');
-                dbStatus.innerHTML = '<span class="status-indicator status-ok"></span>Database connection established';
-                
-                const apiStatus = document.getElementById('api-status');
-                apiStatus.innerHTML = '<span class="status-indicator status-ok"></span>API keys validated';
-            }
-            
-            setInterval(updateStatus, 10000);
-            window.onload = updateStatus;
-        </script>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>🔐 Production Application</h1>
-                <p>Demonstrating Sealed Secrets Integration with GitOps</p>
-                <div class="security-badge">🛡️ Sealed Secrets Enabled</div>
-                <div class="security-badge">🔒 GitOps Secure</div>
-            </div>
-            
-            <div class="info-grid">
-                <div class="info-card">
-                    <h3>🔑 Sealed Secrets Status</h3>
-                    <div class="secret-item">
-                        <strong>Controller Status:</strong><br>
-                        <span id="secrets-status">Loading...</span>
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h3>🔑 Sealed Secrets Status</h3>
+                        <div class="secret-item">
+                            <strong>Controller Status:</strong><br>
+                            <span class="status-indicator"></span>Secrets decrypted successfully
+                        </div>
+                        <div class="secret-item">
+                            <strong>Encryption:</strong> RSA-2048<br>
+                            <strong>Namespace Scoped:</strong> Yes<br>
+                            <strong>Auto-rotation:</strong> 30 days
+                        </div>
                     </div>
-                    <div class="secret-item">
-                        <strong>Encryption:</strong> RSA-2048<br>
-                        <strong>Namespace Scoped:</strong> Yes<br>
-                        <strong>Auto-rotation:</strong> 30 days
+                    
+                    <div class="info-card">
+                        <h3>🗄️ Database Configuration</h3>
+                        ${envVars.DB_HOST ? `
+                        <div class="secret-item">
+                            <strong>DB_HOST:</strong>
+                            <div class="secret-value">${envVars.DB_HOST}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.DB_PORT ? `
+                        <div class="secret-item">
+                            <strong>DB_PORT:</strong>
+                            <div class="secret-value">${envVars.DB_PORT}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.DB_NAME ? `
+                        <div class="secret-item">
+                            <strong>DB_NAME:</strong>
+                            <div class="secret-value">${envVars.DB_NAME}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.DB_USERNAME ? `
+                        <div class="secret-item">
+                            <strong>DB_USERNAME:</strong>
+                            <div class="secret-value">${envVars.DB_USERNAME}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.DB_PASSWORD ? `
+                        <div class="secret-item">
+                            <strong>DB_PASSWORD:</strong>
+                            <div class="secret-value">${envVars.DB_PASSWORD}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3>🔗 API Keys</h3>
+                        ${envVars.STRIPE_API_KEY ? `
+                        <div class="secret-item">
+                            <strong>STRIPE_API_KEY:</strong>
+                            <div class="secret-value">${envVars.STRIPE_API_KEY}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.GITHUB_TOKEN ? `
+                        <div class="secret-item">
+                            <strong>GITHUB_TOKEN:</strong>
+                            <div class="secret-value">${envVars.GITHUB_TOKEN}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.SENDGRID_API_KEY ? `
+                        <div class="secret-item">
+                            <strong>SENDGRID_API_KEY:</strong>
+                            <div class="secret-value">${envVars.SENDGRID_API_KEY}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.JWT_SECRET ? `
+                        <div class="secret-item">
+                            <strong>JWT_SECRET:</strong>
+                            <div class="secret-value">${envVars.JWT_SECRET}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="info-card">
+                        <h3>🛠️ Application Configuration</h3>
+                        ${envVars.APP_ENV ? `
+                        <div class="secret-item">
+                            <strong>APP_ENV:</strong>
+                            <div class="secret-value">${envVars.APP_ENV}</div>
+                        </div>
+                        ` : ''}
+                        ${envVars.APP_VERSION ? `
+                        <div class="secret-item">
+                            <strong>APP_VERSION:</strong>
+                            <div class="secret-value">${envVars.APP_VERSION}</div>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
                 
-                <div class="info-card">
-                    <h3>🗄️ Database Configuration</h3>
-                    <div class="secret-item">
-                        <strong>Host:</strong> <span class="secret-masked">*****.production.svc</span><br>
-                        <strong>Database:</strong> <span class="secret-masked">production_**</span><br>
-                        <strong>Username:</strong> <span class="secret-masked">*****</span><br>
-                        <strong>Status:</strong> <span id="db-status">Checking...</span>
-                    </div>
+                <div class="endpoints">
+                    <h3>🔗 Application Endpoints</h3>
+                    <a href="/health">Health Check</a>
+                    <a href="/ready">Ready Check</a>
+                    <a href="/api/env">Environment API</a>
+                    <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Values</button>
                 </div>
                 
-                <div class="info-card">
-                    <h3>🔗 API Integrations</h3>
-                    <div class="secret-item">
-                        <strong>Stripe API:</strong> <span class="secret-masked">sk_****</span><br>
-                        <strong>GitHub Token:</strong> <span class="secret-masked">ghp_****</span><br>
-                        <strong>SendGrid:</strong> <span class="secret-masked">SG.****</span><br>
-                        <strong>JWT Secret:</strong> <span class="secret-masked">****</span><br>
-                        <strong>Status:</strong> <span id="api-status">Validating...</span>
-                    </div>
-                </div>
-                
-                <div class="info-card">
-                    <h3>🛠️ GitOps Security Features</h3>
-                    <div class="secret-item">
-                        ✅ Secrets encrypted at rest in Git<br>
-                        ✅ Public key encryption (RSA)<br>
-                        ✅ Namespace-scoped decryption<br>
-                        ✅ Automatic secret rotation<br>
-                        ✅ ArgoCD integration<br>
-                        ✅ Audit trail maintained
-                    </div>
+                <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
+                    <p><strong>🔐 Sealed Secrets Benefits:</strong></p>
+                    <p>• Store encrypted secrets safely in Git • Maintain GitOps principles • Automatic decryption in cluster • Key rotation support</p>
+                    <p><small>Last updated: ${new Date().toISOString()} | Environment: Production | Security: High</small></p>
                 </div>
             </div>
-            
-            <div class="endpoints">
-                <h3>🔗 Application Endpoints</h3>
-                <a href="/health">Health Check</a>
-                <a href="/metrics">Metrics</a>
-                <a href="/config">Configuration</a>
-                <a href="/secrets-status">Secrets Status</a>
-            </div>
-            
-            <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2);">
-                <p><strong>🔐 Sealed Secrets Benefits:</strong></p>
-                <p>• Store encrypted secrets safely in Git • Maintain GitOps principles • Automatic decryption in cluster • Key rotation support</p>
-                <p><small>Last updated: <span id="timestamp"></span> | Environment: Production | Security: High</small></p>
-            </div>
-        </div>
-    </body>
-    </html>
+        </body>
+        </html>
+      `;
+      
+      res.send(html);
+    });
+
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`🚀 Sealed Secrets Demo App running on port ${port}`);
+      console.log(`📊 Environment variables loaded: ${Object.keys(process.env).filter(key => 
+        key.startsWith('DB_') || key.startsWith('STRIPE_') || key.startsWith('GITHUB_') || 
+        key.startsWith('SENDGRID_') || key.startsWith('JWT_') || key.startsWith('APP_')
+      ).length}`);
+    });
 ```
 
 **Create ArgoCD Application for Production App:**
 
 **Create:** `argocd-applications/security-apps/production-app.yaml`
+```yaml
+# ArgoCD Application for Production App with Sealed Secrets
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: production-app-sealed-secrets
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: production-app
+    environment: production
+    security-level: high
+    secrets-type: sealed
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/SinaDadvand/k8s-helm.git
+    targetRevision: HEAD
+    path: gitops-apps/production-app
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production-app
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    
+    # Sync waves for secrets first
+    syncOptions:
+    - SyncWave=0  # Secrets first
+    
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+  
+  # Health check for sealed secrets
+  health:
+    - group: bitnami.com
+      kind: SealedSecret
+      check: |
+        hs = {}
+        if obj.status ~= nil then
+          if obj.status.conditions ~= nil then
+            for i, condition in ipairs(obj.status.conditions) do
+              if condition.type == "Synced" and condition.status == "True" then
+                hs.status = "Healthy"
+                hs.message = "SealedSecret is synced"
+                return hs
+              end
+            end
+          end
+          hs.status = "Progressing"
+          hs.message = "SealedSecret is being processed"
+        else
+          hs.status = "Progressing"
+          hs.message = "SealedSecret status not available"
+        end
+        return hs
+```
+
+**Node.js Application vs Static HTML:**
+
+The updated deployment now includes a **Node.js Express application** instead of a static HTML page. Here are the key differences:
+
+**🔄 Original Static HTML Version:**
+- Used nginx with static HTML
+- Showed masked/dummy values (e.g., `*****.production.svc`)
+- Required manual updates for secret values
+- Limited interactivity and no real-time data
+
+**🚀 New Node.js Version:**
+- Uses Node.js Express server with dynamic content
+- **Shows actual decrypted environment variable values**
+- Provides `/api/env` endpoint for programmatic access
+- Real-time display of secret values from Kubernetes secrets
+- Health check endpoints (`/health`, `/ready`)
+- Refresh button to reload values
+
+**Key Benefits of Node.js Demo:**
+- ✅ **Proves secrets are decrypted**: Shows actual DB_PASSWORD, STRIPE_API_KEY values
+- ✅ **Real-time verification**: Values update when secrets rotate
+- ✅ **API access**: JSON endpoint for testing and automation
+- ✅ **Better troubleshooting**: Can verify exact values received by the application
+- ✅ **Educational value**: Demonstrates how applications consume secrets
+
+**Architecture Changes:**
+- **initContainer**: Copies app.js and package.json to writable directory
+- **npm install**: Installs Express.js dependency at runtime
+- **Port 3000**: Node.js app runs on port 3000 (instead of nginx port 80)
+- **Health probes**: Updated to use Node.js endpoints
+
+**Create ArgoCD Application for Production App:**
 ```yaml
 # ArgoCD Application for Production App with Sealed Secrets
 apiVersion: argoproj.io/v1alpha1
@@ -1015,6 +1242,92 @@ kubectl exec -n production-app deployment/production-app -- printenv | Select-St
 Write-Host "✅ Sealed Secrets verification complete!"
 Write-Host "🔒 Secrets are encrypted in Git but decrypted in the cluster"
 Write-Host "📋 Check ArgoCD UI for application status: http://localhost:30001"
+```
+
+### Viewing Actual Decrypted Secret Values with Node.js Demo
+
+**Why This Matters:** The production app now includes a Node.js application that dynamically reads environment variables (including decrypted secrets) and displays them through a web interface. This demonstrates that sealed secrets are actually decrypted and available to applications.
+
+**Access the Node.js Demo Application:**
+```powershell
+# The production app runs on port 3000 internally, exposed via NodePort 30130
+# Port-forward to access the application locally
+kubectl port-forward -n production-app service/production-app-service 8080:3000
+
+# Open in browser: http://localhost:8080
+Write-Host "🌐 Node.js Demo App: http://localhost:8080"
+Write-Host "📊 This app displays actual decrypted environment variable values"
+```
+
+**Alternative Access Methods:**
+```powershell
+# Method 1: Direct NodePort access (if accessible)
+Write-Host "🔗 Direct NodePort access: http://localhost:30130"
+
+# Method 2: Using kubectl proxy
+kubectl proxy --port=8001 &
+Write-Host "🔗 Via kubectl proxy: http://localhost:8001/api/v1/namespaces/production-app/services/production-app-service:3000/proxy/"
+
+# Method 3: Port-forward with different local port
+kubectl port-forward -n production-app deployment/production-app 3000:3000
+Write-Host "🔗 Port-forward to port 3000: http://localhost:3000"
+```
+
+**What You'll See in the Demo:**
+- **Environment Variables**: All environment variables set in the deployment, including those from sealed secrets
+- **API Endpoint**: `/api/env` returns JSON with all environment variables
+- **Real-time Values**: Actual decrypted secret values (DB_PASSWORD, STRIPE_API_KEY, etc.)
+- **Security Note**: In production, you'd filter sensitive values from display
+
+**Verify Environment Variables Are Properly Injected:**
+```powershell
+# Check environment variables directly in the pod
+kubectl exec -n production-app deployment/production-app -- printenv | Select-String -Pattern "DB_|STRIPE_|GITHUB_|SENDGRID_|JWT_"
+
+# Test the API endpoint
+$response = Invoke-WebRequest -Uri "http://localhost:8080/api/env" -UseBasicParsing
+$envData = $response.Content | ConvertFrom-Json
+Write-Host "🔍 Environment variables loaded from secrets:"
+$envData.PSObject.Properties | Where-Object Name -match "DB_|STRIPE_|GITHUB_|SENDGRID_|JWT_" | ForEach-Object {
+    Write-Host "  $($_.Name): $($_.Value.Substring(0, [Math]::Min(10, $_.Value.Length)))..."
+}
+```
+
+**Troubleshooting the Demo Application:**
+```powershell
+# Check pod status and logs
+kubectl get pods -n production-app
+kubectl logs -n production-app deployment/production-app --tail=50
+
+# Check if the service is properly configured
+kubectl get svc -n production-app
+kubectl describe svc production-app-service -n production-app
+
+# Verify sealed secrets were decrypted
+kubectl get secrets -n production-app
+kubectl describe secret database-credentials -n production-app
+kubectl describe secret api-keys -n production-app
+
+# Check if environment variables are being set correctly
+kubectl describe pod -n production-app -l app=production-app
+```
+
+**Understanding Base64 Encoding in Kubernetes Secrets:**
+```powershell
+# The values in your sealed secret templates are base64-encoded
+# Here's how the encoding works:
+
+# Original: admin
+# Base64: YWRtaW4=
+Write-Host "Encoding example:"
+$originalValue = "admin"
+$base64Value = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($originalValue))
+Write-Host "Original: $originalValue"
+Write-Host "Base64: $base64Value"
+
+# Verify decoding
+$decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($base64Value))
+Write-Host "Decoded: $decoded"
 ```
 
 **Test Secret Rotation:**
@@ -2367,177 +2680,3 @@ spec:
         end
         return hs
 ```
-
-**Deploy the External Secrets Demo:**
-```powershell
-# Add all External Secrets configuration files
-git add gitops-apps/external-secrets-config/
-git add argocd-applications/security-apps/external-secrets-demo.yaml
-git commit -m "Add External Secrets demo with HashiCorp Vault integration"
-git push origin main
-
-# Deploy the External Secrets demo
-kubectl apply -f argocd-applications/security-apps/external-secrets-demo.yaml
-
-# Wait for the application to sync
-kubectl wait --for=condition=Synced --timeout=300s application/external-secrets-demo -n argocd
-
-# Check External Secrets status
-kubectl get externalsecrets -n external-secrets-demo
-kubectl get secretstores -n external-secrets-demo
-
-# Verify that secrets were created from Vault
-kubectl get secrets -n external-secrets-demo
-kubectl describe externalsecret database-external-secret -n external-secrets-demo
-
-# Check the demo application
-kubectl get pods -n external-secrets-demo
-kubectl get services -n external-secrets-demo
-
-# Test the application
-Write-Host "🌐 External Secrets Demo: http://localhost:30140"
-Write-Host "🏦 Vault UI: http://localhost:30200 (Token: root-token-123)"
-
-# Test application response
-try {
-    $response = Invoke-WebRequest -Uri "http://localhost:30140" -UseBasicParsing
-    Write-Host "✅ External Secrets demo application is responding"
-} catch {
-    Write-Host "⚠️ Application is still starting up. Try again in a minute."
-}
-```
-
-**Verify External Secrets Functionality:**
-```powershell
-# Check External Secrets Operator logs
-kubectl logs -n external-secrets-system -l app.kubernetes.io/name=external-secrets --tail=20
-
-# Monitor External Secret synchronization
-kubectl get externalsecrets -n external-secrets-demo -w
-
-# Check secret content (should match Vault values)
-Write-Host "🔍 Checking synchronized secrets:"
-kubectl get secret database-credentials-external -n external-secrets-demo -o jsonpath='{.data.username}' | ForEach-Object { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_)) }
-
-# Check application environment variables
-kubectl exec -n external-secrets-demo deployment/external-secrets-demo-app -- printenv | Select-String -Pattern "DB_|STRIPE_|GITHUB_|SENDGRID_|JWT_"
-
-# Test secret refresh by updating Vault (optional)
-Write-Host "🔄 Testing secret refresh capability:"
-Write-Host "1. Access Vault UI at http://localhost:30200"
-Write-Host "2. Login with token: root-token-123"
-Write-Host "3. Update any secret in secret/database"
-Write-Host "4. Wait for refresh interval or force sync"
-
-Write-Host "✅ External Secrets verification complete!"
-Write-Host "🏦 Secrets are now managed centrally in Vault"
-Write-Host "🔄 ESO automatically syncs changes to Kubernetes"
-```
-
-### Summary of Step 29-31: External Secrets Operator Implementation
-
-**What We Accomplished:**
-- ✅ **Deployed External Secrets Operator**: Installed ESO with CRDs and RBAC
-- ✅ **Set Up HashiCorp Vault**: Deployed Vault in development mode with sample secrets
-- ✅ **Configured Secret Stores**: Created SecretStore resources to connect to Vault
-- ✅ **Implemented External Secrets**: Created ExternalSecret resources for different use cases
-- ✅ **Demonstrated Auto-Sync**: Showed automatic secret synchronization with refresh intervals
-- ✅ **Integrated with GitOps**: Deployed everything through ArgoCD applications
-
-**Key Benefits:**
-- 🏦 **Centralized Secret Management**: All secrets stored in external systems
-- 🔄 **Automatic Synchronization**: Secrets updated automatically without manual intervention
-- 🛡️ **Enterprise Integration**: Supports AWS, Azure, GCP, Vault, and more
-- 📋 **Flexible Templating**: Transform and combine secrets during sync
-- ⚡ **Dynamic Updates**: Secrets refresh based on configurable intervals
-
-**External Secrets vs Sealed Secrets Comparison:**
-
-| Feature | External Secrets Operator | Sealed Secrets |
-|---------|---------------------------|----------------|
-| **Storage Location** | External secret stores (Vault, AWS, etc.) | Encrypted in Git repository |
-| **Secret Updates** | Automatic refresh from source | Manual re-encryption and commit |
-| **Dependencies** | Requires external secret store | No external dependencies |
-| **Enterprise Integration** | Excellent (supports major cloud providers) | Limited (Git-based only) |
-| **Complexity** | Higher (more components) | Lower (single controller) |
-| **Best Use Case** | Enterprise environments with existing secret stores | Simple GitOps workflows |
-
-**Next Steps Preview:**
-In the upcoming steps, we'll explore:
-- **ArgoCD Image Updater**: Automated container image updates
-- **OPA Gatekeeper**: Policy-as-code security enforcement
-- **Multi-Cluster GitOps**: Managing multiple Kubernetes clusters
-
----
-
-### 🔧 Troubleshooting Sealed Secrets Encoding Issues
-
-**Problem:** `error: data does not contain any valid RSA or ECDSA certificates`
-
-**Root Cause Analysis:**
-- **PowerShell Encoding**: PowerShell's `Get-Content` and output redirection (`>`) can save files with UTF-16 BOM or other encoding
-- **Pipeline Issues**: Using PowerShell pipes (`|`) can change data encoding in transit
-- **File Operations**: Windows PowerShell default encoding differs from what kubeseal expects
-
-**Solution Steps:**
-```powershell
-# Step 1: Always check your current directory
-Get-Location
-# Should be in: gitops-argocd (or your repo root)
-
-# Step 2: Use cmd for certificate fetching
-cmd /c "kubeseal --fetch-cert --controller-name=sealed-secrets-controller --controller-namespace=sealed-secrets-system > sealed-secrets-public.pem"
-
-# Step 3: Verify certificate file content
-Get-Content "sealed-secrets-public.pem" | Select-Object -First 3 -Last 3
-# Should show: -----BEGIN CERTIFICATE----- and -----END CERTIFICATE-----
-
-# Step 4: Use cmd for encryption with explicit file flags
-cmd /c "kubeseal --format=yaml --cert=sealed-secrets-public.pem --secret-file=secrets/templates/database-secret.yaml --sealed-secret-file=secrets/sealed/database-secret-sealed.yaml"
-
-# Step 5: Verify sealed secret was created
-Test-Path "secrets/sealed/database-secret-sealed.yaml"
-Get-Content "secrets/sealed/database-secret-sealed.yaml" | Select-Object -First 5
-```
-
-**What NOT to Do:**
-```powershell
-# ❌ Avoid PowerShell redirection
-kubeseal --fetch-cert ... > certificate.pem
-
-# ❌ Avoid PowerShell pipes
-Get-Content input.yaml | kubeseal ... > output.yaml
-
-# ❌ Avoid mixing PowerShell and kubeseal for file operations
-$content = Get-Content input.yaml
-$content | kubeseal ...
-```
-
-**What TO Do:**
-```powershell
-# ✅ Use cmd for file operations
-cmd /c "kubeseal --fetch-cert ... > certificate.pem"
-
-# ✅ Use explicit file flags
-cmd /c "kubeseal --secret-file=input.yaml --sealed-secret-file=output.yaml ..."
-
-# ✅ Verify files exist before processing
-Test-Path "input.yaml" -and Test-Path "certificate.pem"
-```
-
-**Quick Diagnostic Commands:**
-```powershell
-# Check if Sealed Secrets controller is running
-kubectl get pods -n sealed-secrets-system
-
-# Test direct certificate fetch
-cmd /c "kubeseal --fetch-cert --controller-name=sealed-secrets-controller --controller-namespace=sealed-secrets-system"
-
-# Check kubeseal version
-kubeseal --version
-
-# Verify file encodings (if issues persist)
-Get-Content "sealed-secrets-public.pem" -Encoding UTF8 | Select-Object -First 5
-```
-
----
